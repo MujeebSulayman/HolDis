@@ -122,7 +122,7 @@ Holdis is an invoice and payment protocol that leverages blockchain technology f
 ### Contract Details
 
 - **Contract Name**: `Holdis`
-- **Solidity Version**: `^0.8.28`
+- **Solidity Version**: `^0.8.30`
 - **License**: MIT
 - **Upgradeability**: UUPS (ERC-1967)
 - **Standards**: OpenZeppelin Upgradeable Contracts
