@@ -8,11 +8,11 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 
 /**
- * @title InvoiceEscrow
- * @notice Production-grade blockchain invoice and escrow state registry
- * @dev Enterprise features: multi-token, disputes, partial payments, batch ops, auto-timeouts
+ * @title Holdis
+ * @notice Simple blockchain invoice and payment tracking system
+ * @dev Supports direct payments and optional escrow mode for deliverable tracking
  */
-contract InvoiceEscrow is 
+contract Holdis is 
     Initializable, 
     UUPSUpgradeable, 
     AccessControlUpgradeable, 
@@ -20,98 +20,43 @@ contract InvoiceEscrow is
     ReentrancyGuardUpgradeable
 {
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
-    bytes32 public constant OPERATOR_ROLE = keccak256("OPERATOR_ROLE");
-    bytes32 public constant ARBITER_ROLE = keccak256("ARBITER_ROLE");
     
     enum InvoiceStatus {
-        Draft,           // Created but not sent
-        Pending,         // Sent, awaiting payment
-        PartiallyPaid,   // Partially funded
-        Funded,          // Fully funded
-        Delivered,       // Goods/services delivered
-        Disputed,        // Under dispute
-        Completed,       // Successfully completed
-        Refunded,        // Refunded to payer
-        Cancelled,       // Cancelled
-        Expired          // Expired (past due date)
+        Pending,      // Created, awaiting payment
+        Funded,       // Paid, funds in custody
+        Delivered,    // (Escrow mode only) Deliverables submitted
+        Completed,    // Funds released/withdrawn
+        Cancelled     // Cancelled
     }
     
-    enum DisputeStatus {
-        None,
-        Raised,
-        UnderReview,
-        ResolvedForIssuer,
-        ResolvedForPayer,
-        Cancelled
-    }
-    
-    struct InvoiceMetadata {
-        string description;
-        string category;        // e.g., "goods", "services", "subscription"
-        string attachmentHash;  // IPFS hash for invoice document
-        bytes32 termsHash;      // Hash of terms and conditions
-    }
-    
-    struct PaymentTerms {
-        uint256 dueDate;              // Unix timestamp
-        uint256 lateFeePerDay;        // Basis points (100 = 1%)
-        uint256 earlyPaymentDiscount; // Basis points
-        uint256 earlyPaymentDeadline; // Unix timestamp
-        bool allowPartialPayment;
-        uint256 minimumPartialAmount;
-    }
-    
-    struct Agreement {
+    struct Invoice {
         uint256 id;
-        address issuer;
-        address payer;
-        address receiver;
-        uint256 totalAmount;
-        uint256 paidAmount;
-        address tokenAddress;        // ERC20 token or address(0) for native
+        address issuer;         // Who created the invoice
+        address payer;          // Who pays
+        address receiver;       // Who receives the funds
+        uint256 amount;
+        address tokenAddress;   // ERC20 token or address(0) for native
         InvoiceStatus status;
-        PaymentTerms terms;
-        InvoiceMetadata metadata;
+        bool requiresDelivery;  // Escrow mode: requires delivery confirmation
+        string description;
+        string attachmentHash;  // IPFS hash for invoice details
         uint256 createdAt;
         uint256 fundedAt;
         uint256 deliveredAt;
         uint256 completedAt;
-        uint256 lastModifiedAt;
-        bool isRecurring;
-        uint256 recurringInterval;   // In seconds (e.g., 2592000 for monthly)
-        uint256 nextRecurringDate;
-    }
-    
-    struct Dispute {
-        uint256 invoiceId;
-        address initiator;
-        DisputeStatus status;
-        string reason;
-        string resolution;
-        address arbiter;
-        uint256 raisedAt;
-        uint256 resolvedAt;
-        uint256 refundAmount;
     }
     
     struct PlatformSettings {
-        uint256 platformFee;              // Basis points (e.g., 250 = 2.5%)
-        uint256 maxInvoiceAmount;         // Maximum invoice amount
-        uint256 minInvoiceAmount;         // Minimum invoice amount
-        uint256 defaultDisputePeriod;     // Time window for disputes (seconds)
-        uint256 autoCompleteTimeout;      // Auto-complete if no action (seconds)
-        bool requireKYC;                  // Require KYC for large amounts
-        uint256 kycThreshold;             // Amount requiring KYC
+        uint256 platformFee;        // Basis points (e.g., 250 = 2.5%)
+        uint256 maxInvoiceAmount;   // Maximum invoice amount
+        uint256 minInvoiceAmount;   // Minimum invoice amount
     }
     
     // State variables
     uint256 private _nextInvoiceId;
-    uint256 private _nextDisputeId;
     PlatformSettings public platformSettings;
     
-    mapping(uint256 => Agreement) public agreements;
-    mapping(uint256 => Dispute) public disputes;
-    mapping(uint256 => uint256) public invoiceToDispute;
+    mapping(uint256 => Invoice) public invoices;
     
     // Multi-party tracking
     mapping(address => uint256[]) private _issuerInvoices;
@@ -122,16 +67,6 @@ contract InvoiceEscrow is
     mapping(address => bool) public supportedTokens;
     address[] public supportedTokenList;
     
-    // KYC tracking
-    mapping(address => bool) public kycVerified;
-    
-    // Payment tracking
-    mapping(uint256 => mapping(uint256 => uint256)) public paymentHistory; // invoiceId => timestamp => amount
-    
-    // Template system
-    mapping(bytes32 => InvoiceMetadata) public invoiceTemplates;
-    mapping(bytes32 => PaymentTerms) public termsTemplates;
-    
     // Events
     event InvoiceCreated(
         uint256 indexed invoiceId,
@@ -140,10 +75,11 @@ contract InvoiceEscrow is
         address receiver,
         uint256 amount,
         address token,
+        bool requiresDelivery,
         uint256 timestamp
     );
     
-    event InvoiceUpdated(
+    event InvoiceStatusUpdated(
         uint256 indexed invoiceId,
         InvoiceStatus oldStatus,
         InvoiceStatus newStatus,
@@ -154,15 +90,6 @@ contract InvoiceEscrow is
         uint256 indexed invoiceId,
         address indexed payer,
         uint256 amount,
-        uint256 totalPaid,
-        uint256 timestamp
-    );
-    
-    event PartialPayment(
-        uint256 indexed invoiceId,
-        address indexed payer,
-        uint256 amount,
-        uint256 remaining,
         uint256 timestamp
     );
     
@@ -185,31 +112,10 @@ contract InvoiceEscrow is
         uint256 timestamp
     );
     
-    event DisputeRaised(
-        uint256 indexed disputeId,
-        uint256 indexed invoiceId,
-        address indexed initiator,
-        string reason,
-        uint256 timestamp
-    );
-    
-    event DisputeResolved(
-        uint256 indexed disputeId,
-        uint256 indexed invoiceId,
-        DisputeStatus resolution,
-        address arbiter,
-        uint256 timestamp
-    );
-    
     event InvoiceCancelled(
         uint256 indexed invoiceId,
         address indexed cancelledBy,
         string reason,
-        uint256 timestamp
-    );
-    
-    event InvoiceExpired(
-        uint256 indexed invoiceId,
         uint256 timestamp
     );
     
@@ -226,31 +132,19 @@ contract InvoiceEscrow is
         uint256 timestamp
     );
     
-    event KYCUpdated(
-        address indexed user,
-        bool verified,
-        uint256 timestamp
-    );
-    
-    event RecurringInvoiceCreated(
-        uint256 indexed originalInvoiceId,
-        uint256 indexed newInvoiceId,
-        uint256 timestamp
-    );
-    
     // Modifiers
     modifier onlyIssuer(uint256 invoiceId) {
-        require(agreements[invoiceId].issuer == msg.sender, "Not issuer");
+        require(invoices[invoiceId].issuer == msg.sender, "Not issuer");
         _;
     }
     
     modifier onlyPayer(uint256 invoiceId) {
-        require(agreements[invoiceId].payer == msg.sender, "Not payer");
+        require(invoices[invoiceId].payer == msg.sender, "Not payer");
         _;
     }
     
     modifier onlyReceiver(uint256 invoiceId) {
-        require(agreements[invoiceId].receiver == msg.sender, "Not receiver");
+        require(invoices[invoiceId].receiver == msg.sender, "Not receiver");
         _;
     }
     
@@ -260,24 +154,12 @@ contract InvoiceEscrow is
     }
     
     modifier inStatus(uint256 invoiceId, InvoiceStatus status) {
-        require(agreements[invoiceId].status == status, "Invalid status");
-        _;
-    }
-    
-    modifier notInStatus(uint256 invoiceId, InvoiceStatus status) {
-        require(agreements[invoiceId].status != status, "Invalid status for operation");
+        require(invoices[invoiceId].status == status, "Invalid status");
         _;
     }
     
     modifier onlySupportedToken(address token) {
         require(supportedTokens[token], "Token not supported");
-        _;
-    }
-    
-    modifier checkKYC(uint256 amount) {
-        if (platformSettings.requireKYC && amount >= platformSettings.kycThreshold) {
-            require(kycVerified[msg.sender], "KYC required for this amount");
-        }
         _;
     }
     
@@ -295,21 +177,14 @@ contract InvoiceEscrow is
         
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
         _grantRole(ADMIN_ROLE, admin);
-        _grantRole(OPERATOR_ROLE, admin);
-        _grantRole(ARBITER_ROLE, admin);
         
         _nextInvoiceId = 1;
-        _nextDisputeId = 1;
         
         // Default platform settings
         platformSettings = PlatformSettings({
             platformFee: 250,              // 2.5%
             maxInvoiceAmount: 1000000e18,  // 1M tokens
-            minInvoiceAmount: 1e18,        // 1 token
-            defaultDisputePeriod: 14 days,
-            autoCompleteTimeout: 30 days,
-            requireKYC: false,
-            kycThreshold: 100000e18        // 100K tokens
+            minInvoiceAmount: 1e18         // 1 token
         });
         
         // Support native token by default
@@ -318,45 +193,43 @@ contract InvoiceEscrow is
     }
     
     /**
-     * @notice Create a new invoice with full payment terms
+     * @notice Create a new invoice
+     * @param payer Address who will pay the invoice
+     * @param receiver Address who will receive the funds
+     * @param amount Invoice amount
+     * @param token Token address (address(0) for native token)
+     * @param requiresDelivery True for escrow mode (requires delivery confirmation)
+     * @param description Invoice description
+     * @param attachmentHash IPFS hash for invoice details/attachments
      */
     function createInvoice(
         address payer,
         address receiver,
         uint256 amount,
         address token,
-        PaymentTerms memory terms,
-        InvoiceMetadata memory metadata,
-        bool isRecurring,
-        uint256 recurringInterval
-    ) public whenNotPaused onlySupportedToken(token) checkKYC(amount) returns (uint256) {
+        bool requiresDelivery,
+        string calldata description,
+        string calldata attachmentHash
+    ) external whenNotPaused onlySupportedToken(token) returns (uint256) {
         require(payer != address(0), "Invalid payer");
         require(receiver != address(0), "Invalid receiver");
         require(amount >= platformSettings.minInvoiceAmount, "Amount below minimum");
         require(amount <= platformSettings.maxInvoiceAmount, "Amount above maximum");
-        require(terms.dueDate > block.timestamp, "Due date must be in future");
         
         uint256 invoiceId = _nextInvoiceId++;
         
-        Agreement storage agreement = agreements[invoiceId];
-        agreement.id = invoiceId;
-        agreement.issuer = msg.sender;
-        agreement.payer = payer;
-        agreement.receiver = receiver;
-        agreement.totalAmount = amount;
-        agreement.paidAmount = 0;
-        agreement.tokenAddress = token;
-        agreement.status = InvoiceStatus.Pending;
-        agreement.terms = terms;
-        agreement.metadata = metadata;
-        agreement.createdAt = block.timestamp;
-        agreement.lastModifiedAt = block.timestamp;
-        agreement.isRecurring = isRecurring;
-        agreement.recurringInterval = recurringInterval;
-        
-        if (isRecurring) {
-            agreement.nextRecurringDate = block.timestamp + recurringInterval;
-        }
+        Invoice storage invoice = invoices[invoiceId];
+        invoice.id = invoiceId;
+        invoice.issuer = msg.sender;
+        invoice.payer = payer;
+        invoice.receiver = receiver;
+        invoice.amount = amount;
+        invoice.tokenAddress = token;
+        invoice.status = InvoiceStatus.Pending;
+        invoice.requiresDelivery = requiresDelivery;
+        invoice.description = description;
+        invoice.attachmentHash = attachmentHash;
+        invoice.createdAt = block.timestamp;
         
         _issuerInvoices[msg.sender].push(invoiceId);
         _payerInvoices[payer].push(invoiceId);
@@ -369,6 +242,7 @@ contract InvoiceEscrow is
             receiver,
             amount,
             token,
+            requiresDelivery,
             block.timestamp
         );
         
@@ -376,95 +250,38 @@ contract InvoiceEscrow is
     }
     
     /**
-     * @notice Create invoice from template
+     * @notice Mark invoice as funded (backend confirms payment received)
+     * @dev Called by payer after payment or by backend
      */
-    function createInvoiceFromTemplate(
-        address payer,
-        address receiver,
-        uint256 amount,
-        address token,
-        bytes32 metadataTemplateId,
-        bytes32 termsTemplateId
-    ) external whenNotPaused returns (uint256) {
-        InvoiceMetadata memory metadata = invoiceTemplates[metadataTemplateId];
-        PaymentTerms memory terms = termsTemplates[termsTemplateId];
-        
-        return createInvoice(
-            payer,
-            receiver,
-            amount,
-            token,
-            terms,
-            metadata,
-            false,
-            0
-        );
-    }
-    
-    /**
-     * @notice Mark invoice as funded (full or partial payment)
-     */
-    function markAsFunded(
-        uint256 invoiceId,
-        uint256 amount
-    ) external 
+    function markAsFunded(uint256 invoiceId) 
+        external 
         whenNotPaused 
         invoiceExists(invoiceId)
-        onlyPayer(invoiceId)
+        inStatus(invoiceId, InvoiceStatus.Pending)
         nonReentrant
     {
-        Agreement storage agreement = agreements[invoiceId];
+        Invoice storage invoice = invoices[invoiceId];
         
         require(
-            agreement.status == InvoiceStatus.Pending || 
-            agreement.status == InvoiceStatus.PartiallyPaid,
-            "Invalid status for payment"
+            msg.sender == invoice.payer || hasRole(ADMIN_ROLE, msg.sender),
+            "Only payer or admin"
         );
         
-        require(amount > 0, "Amount must be positive");
-        require(agreement.paidAmount + amount <= agreement.totalAmount, "Exceeds total amount");
+        InvoiceStatus oldStatus = invoice.status;
+        invoice.status = InvoiceStatus.Funded;
+        invoice.fundedAt = block.timestamp;
         
-        // Check partial payment rules
-        if (amount < agreement.totalAmount - agreement.paidAmount) {
-            require(agreement.terms.allowPartialPayment, "Partial payments not allowed");
-            require(amount >= agreement.terms.minimumPartialAmount, "Below minimum partial amount");
+        emit InvoiceFunded(invoiceId, invoice.payer, invoice.amount, block.timestamp);
+        emit InvoiceStatusUpdated(invoiceId, oldStatus, invoice.status, block.timestamp);
+        
+        // If no delivery required, auto-complete
+        if (!invoice.requiresDelivery) {
+            _completeInvoice(invoiceId);
         }
-        
-        agreement.paidAmount += amount;
-        paymentHistory[invoiceId][block.timestamp] = amount;
-        
-        InvoiceStatus oldStatus = agreement.status;
-        
-        if (agreement.paidAmount >= agreement.totalAmount) {
-            agreement.status = InvoiceStatus.Funded;
-            agreement.fundedAt = block.timestamp;
-            
-            emit InvoiceFunded(
-                invoiceId,
-                msg.sender,
-                amount,
-                agreement.paidAmount,
-                block.timestamp
-            );
-        } else {
-            agreement.status = InvoiceStatus.PartiallyPaid;
-            
-            emit PartialPayment(
-                invoiceId,
-                msg.sender,
-                amount,
-                agreement.totalAmount - agreement.paidAmount,
-                block.timestamp
-            );
-        }
-        
-        agreement.lastModifiedAt = block.timestamp;
-        
-        emit InvoiceUpdated(invoiceId, oldStatus, agreement.status, block.timestamp);
     }
     
     /**
-     * @notice Submit delivery proof
+     * @notice Submit delivery proof (escrow mode only)
      */
     function submitDelivery(
         uint256 invoiceId,
@@ -475,18 +292,19 @@ contract InvoiceEscrow is
         inStatus(invoiceId, InvoiceStatus.Funded)
         onlyIssuer(invoiceId)
     {
-        Agreement storage agreement = agreements[invoiceId];
-        InvoiceStatus oldStatus = agreement.status;
-        agreement.status = InvoiceStatus.Delivered;
-        agreement.deliveredAt = block.timestamp;
-        agreement.lastModifiedAt = block.timestamp;
+        Invoice storage invoice = invoices[invoiceId];
+        require(invoice.requiresDelivery, "Invoice does not require delivery");
+        
+        InvoiceStatus oldStatus = invoice.status;
+        invoice.status = InvoiceStatus.Delivered;
+        invoice.deliveredAt = block.timestamp;
         
         emit DeliverySubmitted(invoiceId, msg.sender, proofHash, block.timestamp);
-        emit InvoiceUpdated(invoiceId, oldStatus, agreement.status, block.timestamp);
+        emit InvoiceStatusUpdated(invoiceId, oldStatus, invoice.status, block.timestamp);
     }
     
     /**
-     * @notice Confirm delivery and complete invoice
+     * @notice Confirm delivery and complete invoice (escrow mode only)
      */
     function confirmDelivery(uint256 invoiceId)
         external
@@ -496,145 +314,29 @@ contract InvoiceEscrow is
         onlyReceiver(invoiceId)
         nonReentrant
     {
-        Agreement storage agreement = agreements[invoiceId];
-        InvoiceStatus oldStatus = agreement.status;
-        agreement.status = InvoiceStatus.Completed;
-        agreement.completedAt = block.timestamp;
-        agreement.lastModifiedAt = block.timestamp;
-        
-        // Calculate platform fee
-        uint256 platformFee = (agreement.totalAmount * platformSettings.platformFee) / 10000;
+        Invoice storage invoice = invoices[invoiceId];
+        require(invoice.requiresDelivery, "Invoice does not require delivery");
         
         emit DeliveryConfirmed(invoiceId, msg.sender, block.timestamp);
-        emit InvoiceCompleted(invoiceId, platformFee, block.timestamp);
-        emit InvoiceUpdated(invoiceId, oldStatus, agreement.status, block.timestamp);
         
-        // Handle recurring invoice
-        if (agreement.isRecurring && block.timestamp >= agreement.nextRecurringDate) {
-            _createRecurringInvoice(invoiceId);
-        }
+        _completeInvoice(invoiceId);
     }
     
     /**
-     * @notice Auto-complete invoice after timeout (operator only)
+     * @notice Internal function to complete invoice and calculate fees
      */
-    function autoCompleteInvoice(uint256 invoiceId)
-        external
-        whenNotPaused
-        invoiceExists(invoiceId)
-        inStatus(invoiceId, InvoiceStatus.Delivered)
-        onlyRole(OPERATOR_ROLE)
-    {
-        Agreement storage agreement = agreements[invoiceId];
+    function _completeInvoice(uint256 invoiceId) private {
+        Invoice storage invoice = invoices[invoiceId];
+        InvoiceStatus oldStatus = invoice.status;
         
-        require(
-            block.timestamp >= agreement.deliveredAt + platformSettings.autoCompleteTimeout,
-            "Timeout not reached"
-        );
+        invoice.status = InvoiceStatus.Completed;
+        invoice.completedAt = block.timestamp;
         
-        InvoiceStatus oldStatus = agreement.status;
-        agreement.status = InvoiceStatus.Completed;
-        agreement.completedAt = block.timestamp;
-        agreement.lastModifiedAt = block.timestamp;
-        
-        uint256 platformFee = (agreement.totalAmount * platformSettings.platformFee) / 10000;
+        // Calculate platform fee
+        uint256 platformFee = (invoice.amount * platformSettings.platformFee) / 10000;
         
         emit InvoiceCompleted(invoiceId, platformFee, block.timestamp);
-        emit InvoiceUpdated(invoiceId, oldStatus, agreement.status, block.timestamp);
-    }
-    
-    /**
-     * @notice Raise a dispute
-     */
-    function raiseDispute(
-        uint256 invoiceId,
-        string calldata reason
-    ) external
-        whenNotPaused
-        invoiceExists(invoiceId)
-        nonReentrant
-    {
-        Agreement storage agreement = agreements[invoiceId];
-        
-        require(
-            msg.sender == agreement.issuer || 
-            msg.sender == agreement.payer || 
-            msg.sender == agreement.receiver,
-            "Not authorized"
-        );
-        
-        require(
-            agreement.status == InvoiceStatus.Funded || 
-            agreement.status == InvoiceStatus.Delivered,
-            "Cannot dispute at this stage"
-        );
-        
-        require(invoiceToDispute[invoiceId] == 0, "Dispute already exists");
-        
-        uint256 disputeId = _nextDisputeId++;
-        
-        Dispute storage dispute = disputes[disputeId];
-        dispute.invoiceId = invoiceId;
-        dispute.initiator = msg.sender;
-        dispute.status = DisputeStatus.Raised;
-        dispute.reason = reason;
-        dispute.raisedAt = block.timestamp;
-        
-        invoiceToDispute[invoiceId] = disputeId;
-        
-        InvoiceStatus oldStatus = agreement.status;
-        agreement.status = InvoiceStatus.Disputed;
-        agreement.lastModifiedAt = block.timestamp;
-        
-        emit DisputeRaised(disputeId, invoiceId, msg.sender, reason, block.timestamp);
-        emit InvoiceUpdated(invoiceId, oldStatus, agreement.status, block.timestamp);
-    }
-    
-    /**
-     * @notice Resolve dispute (arbiter only)
-     */
-    function resolveDispute(
-        uint256 disputeId,
-        DisputeStatus resolution,
-        string calldata resolutionDetails,
-        uint256 refundAmount
-    ) external
-        whenNotPaused
-        onlyRole(ARBITER_ROLE)
-        nonReentrant
-    {
-        Dispute storage dispute = disputes[disputeId];
-        require(dispute.status == DisputeStatus.Raised || dispute.status == DisputeStatus.UnderReview, "Invalid dispute status");
-        
-        uint256 invoiceId = dispute.invoiceId;
-        Agreement storage agreement = agreements[invoiceId];
-        
-        require(refundAmount <= agreement.paidAmount, "Refund exceeds paid amount");
-        
-        dispute.status = resolution;
-        dispute.resolution = resolutionDetails;
-        dispute.arbiter = msg.sender;
-        dispute.resolvedAt = block.timestamp;
-        dispute.refundAmount = refundAmount;
-        
-        InvoiceStatus oldStatus = agreement.status;
-        InvoiceStatus newStatus;
-        
-        if (resolution == DisputeStatus.ResolvedForPayer) {
-            newStatus = refundAmount == agreement.paidAmount ? InvoiceStatus.Refunded : InvoiceStatus.PartiallyPaid;
-            agreement.paidAmount -= refundAmount;
-        } else if (resolution == DisputeStatus.ResolvedForIssuer) {
-            newStatus = InvoiceStatus.Completed;
-            agreement.completedAt = block.timestamp;
-        } else {
-            newStatus = InvoiceStatus.Cancelled;
-        }
-        
-        agreement.status = newStatus;
-        agreement.lastModifiedAt = block.timestamp;
-        
-        emit DisputeResolved(disputeId, invoiceId, resolution, msg.sender, block.timestamp);
-        emit InvoiceUpdated(invoiceId, oldStatus, newStatus, block.timestamp);
+        emit InvoiceStatusUpdated(invoiceId, oldStatus, invoice.status, block.timestamp);
     }
     
     /**
@@ -648,127 +350,36 @@ contract InvoiceEscrow is
         invoiceExists(invoiceId)
         nonReentrant
     {
-        Agreement storage agreement = agreements[invoiceId];
+        Invoice storage invoice = invoices[invoiceId];
         
         require(
-            msg.sender == agreement.issuer || 
-            msg.sender == agreement.payer ||
+            msg.sender == invoice.issuer || 
+            msg.sender == invoice.payer ||
             hasRole(ADMIN_ROLE, msg.sender),
             "Not authorized to cancel"
         );
         
         require(
-            agreement.status == InvoiceStatus.Pending || 
-            agreement.status == InvoiceStatus.Draft ||
-            (agreement.status == InvoiceStatus.PartiallyPaid && msg.sender == agreement.payer),
-            "Cannot cancel at this stage"
+            invoice.status == InvoiceStatus.Pending,
+            "Can only cancel pending invoices"
         );
         
-        InvoiceStatus oldStatus = agreement.status;
-        agreement.status = InvoiceStatus.Cancelled;
-        agreement.lastModifiedAt = block.timestamp;
+        InvoiceStatus oldStatus = invoice.status;
+        invoice.status = InvoiceStatus.Cancelled;
         
         emit InvoiceCancelled(invoiceId, msg.sender, reason, block.timestamp);
-        emit InvoiceUpdated(invoiceId, oldStatus, agreement.status, block.timestamp);
-    }
-    
-    /**
-     * @notice Mark expired invoices (operator only)
-     */
-    function markAsExpired(uint256 invoiceId)
-        external
-        whenNotPaused
-        invoiceExists(invoiceId)
-        onlyRole(OPERATOR_ROLE)
-    {
-        Agreement storage agreement = agreements[invoiceId];
-        
-        require(
-            agreement.status == InvoiceStatus.Pending || 
-            agreement.status == InvoiceStatus.PartiallyPaid,
-            "Invoice not in valid state for expiration"
-        );
-        
-        require(block.timestamp > agreement.terms.dueDate, "Not yet expired");
-        
-        InvoiceStatus oldStatus = agreement.status;
-        agreement.status = InvoiceStatus.Expired;
-        agreement.lastModifiedAt = block.timestamp;
-        
-        emit InvoiceExpired(invoiceId, block.timestamp);
-        emit InvoiceUpdated(invoiceId, oldStatus, agreement.status, block.timestamp);
-    }
-    
-    /**
-     * @notice Internal function to create recurring invoice
-     */
-    function _createRecurringInvoice(uint256 originalId) private {
-        Agreement storage original = agreements[originalId];
-        
-        uint256 newInvoiceId = _nextInvoiceId++;
-        Agreement storage newAgreement = agreements[newInvoiceId];
-        
-        newAgreement.id = newInvoiceId;
-        newAgreement.issuer = original.issuer;
-        newAgreement.payer = original.payer;
-        newAgreement.receiver = original.receiver;
-        newAgreement.totalAmount = original.totalAmount;
-        newAgreement.tokenAddress = original.tokenAddress;
-        newAgreement.status = InvoiceStatus.Pending;
-        newAgreement.terms = original.terms;
-        newAgreement.terms.dueDate = block.timestamp + original.recurringInterval;
-        newAgreement.metadata = original.metadata;
-        newAgreement.createdAt = block.timestamp;
-        newAgreement.lastModifiedAt = block.timestamp;
-        newAgreement.isRecurring = true;
-        newAgreement.recurringInterval = original.recurringInterval;
-        newAgreement.nextRecurringDate = block.timestamp + (2 * original.recurringInterval);
-        
-        _issuerInvoices[original.issuer].push(newInvoiceId);
-        _payerInvoices[original.payer].push(newInvoiceId);
-        _receiverInvoices[original.receiver].push(newInvoiceId);
-        
-        original.nextRecurringDate = newAgreement.nextRecurringDate;
-        
-        emit RecurringInvoiceCreated(originalId, newInvoiceId, block.timestamp);
-        emit InvoiceCreated(
-            newInvoiceId,
-            original.issuer,
-            original.payer,
-            original.receiver,
-            original.totalAmount,
-            original.tokenAddress,
-            block.timestamp
-        );
+        emit InvoiceStatusUpdated(invoiceId, oldStatus, invoice.status, block.timestamp);
     }
     
     // ============ Query Functions ============
     
-    function getAgreement(uint256 invoiceId) 
+    function getInvoice(uint256 invoiceId) 
         external 
         view 
         invoiceExists(invoiceId)
-        returns (Agreement memory) 
+        returns (Invoice memory) 
     {
-        return agreements[invoiceId];
-    }
-    
-    function getDispute(uint256 disputeId) 
-        external 
-        view 
-        returns (Dispute memory) 
-    {
-        return disputes[disputeId];
-    }
-    
-    function getInvoiceDispute(uint256 invoiceId)
-        external
-        view
-        returns (Dispute memory)
-    {
-        uint256 disputeId = invoiceToDispute[invoiceId];
-        require(disputeId > 0, "No dispute for this invoice");
-        return disputes[disputeId];
+        return invoices[invoiceId];
     }
     
     /**
@@ -831,10 +442,6 @@ contract InvoiceEscrow is
         return _nextInvoiceId - 1;
     }
     
-    function getTotalDisputes() external view returns (uint256) {
-        return _nextDisputeId - 1;
-    }
-    
     function getSupportedTokens() external view returns (address[] memory) {
         return supportedTokenList;
     }
@@ -844,21 +451,13 @@ contract InvoiceEscrow is
     function updatePlatformSettings(
         uint256 platformFee,
         uint256 maxAmount,
-        uint256 minAmount,
-        uint256 disputePeriod,
-        uint256 autoTimeout,
-        bool requireKYC,
-        uint256 kycThreshold
+        uint256 minAmount
     ) external onlyRole(ADMIN_ROLE) {
         require(platformFee <= 1000, "Fee too high"); // Max 10%
         
         platformSettings.platformFee = platformFee;
         platformSettings.maxInvoiceAmount = maxAmount;
         platformSettings.minInvoiceAmount = minAmount;
-        platformSettings.defaultDisputePeriod = disputePeriod;
-        platformSettings.autoCompleteTimeout = autoTimeout;
-        platformSettings.requireKYC = requireKYC;
-        platformSettings.kycThreshold = kycThreshold;
         
         emit PlatformSettingsUpdated(platformFee, maxAmount, minAmount, block.timestamp);
     }
@@ -885,38 +484,6 @@ contract InvoiceEscrow is
         }
         
         emit TokenSupported(token, supported, block.timestamp);
-    }
-    
-    function setKYCStatus(address user, bool verified) 
-        external 
-        onlyRole(OPERATOR_ROLE) 
-    {
-        kycVerified[user] = verified;
-        emit KYCUpdated(user, verified, block.timestamp);
-    }
-    
-    function batchSetKYCStatus(address[] calldata users, bool verified)
-        external
-        onlyRole(OPERATOR_ROLE)
-    {
-        for (uint256 i = 0; i < users.length; i++) {
-            kycVerified[users[i]] = verified;
-            emit KYCUpdated(users[i], verified, block.timestamp);
-        }
-    }
-    
-    function saveInvoiceTemplate(
-        bytes32 templateId,
-        InvoiceMetadata calldata metadata
-    ) external onlyRole(OPERATOR_ROLE) {
-        invoiceTemplates[templateId] = metadata;
-    }
-    
-    function saveTermsTemplate(
-        bytes32 templateId,
-        PaymentTerms calldata terms
-    ) external onlyRole(OPERATOR_ROLE) {
-        termsTemplates[templateId] = terms;
     }
     
     function pause() external onlyRole(ADMIN_ROLE) {
