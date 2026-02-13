@@ -390,7 +390,7 @@ backend.on('InvoiceCompleted', async (invoiceId, platformFee) => {
 ## 📦 Deployment
 
 ```bash
-# Compile
+# Compilethe
 npx hardhat compile
 
 # Test
