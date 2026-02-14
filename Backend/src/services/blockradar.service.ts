@@ -9,6 +9,7 @@ import {
   ContractReadRequest,
   ContractWriteRequest,
   ContractWriteResponse,
+  BatchContractWriteResponse,
   ContractNetworkFeeRequest,
   ContractNetworkFeeResponse,
   WalletBalance,
@@ -109,12 +110,13 @@ export class BlockradarService {
 
   /**
    * Write to smart contract (state-changing functions)
+   * Supports both single and batch operations
    */
   async writeContract(
     request: ContractWriteRequest
-  ): Promise<ContractWriteResponse> {
+  ): Promise<ContractWriteResponse | BatchContractWriteResponse> {
     try {
-      const response = await this.client.post<BlockradarResponse<ContractWriteResponse>>(
+      const response = await this.client.post(
         `/v1/wallets/${this.walletId}/contracts/write`,
         request
       );
@@ -202,6 +204,8 @@ export class BlockradarService {
   /**
    * Release funds from custody
    * Transfers funds from payer to receiver and collects platform fee
+   * 
+   * Note: Gas fees are automatically deducted from wallet's native balance by Blockradar
    */
   async releaseFunds(request: ReleaseFundsRequest): Promise<{
     receiverTransfer: TransferResponse;
@@ -220,13 +224,31 @@ export class BlockradarService {
         BigInt(request.amount) - BigInt(request.platformFee)
       ).toString();
 
+      // Validate sufficient token balance before transfer
+      const isNativeToken = request.token === '0x0000000000000000000000000000000000000000';
+      const tokenForBalance = isNativeToken ? undefined : request.token;
+      
+      const hasSufficientBalance = await this.hasSufficientBalance(
+        request.amount,
+        tokenForBalance
+      );
+
+      if (!hasSufficientBalance) {
+        const errorMsg = `Insufficient ${isNativeToken ? 'native' : 'token'} balance for transfer`;
+        logger.error(errorMsg, {
+          invoiceId: request.invoiceId,
+          required: request.amount,
+          token: request.token,
+        });
+        throw new Error(errorMsg);
+      }
+
       // Transfer to receiver
+      // Note: Blockradar handles gas fees automatically from wallet's native balance
       const receiverTransfer = await this.transfer({
         to: request.toAddress,
         amount: netAmount,
-        token: request.token === '0x0000000000000000000000000000000000000000' 
-          ? undefined 
-          : request.token,
+        token: isNativeToken ? undefined : request.token,
         reference: `invoice-${request.invoiceId}-payment`,
         metadata: {
           invoiceId: request.invoiceId,
@@ -234,13 +256,17 @@ export class BlockradarService {
         },
       });
 
+      logger.info('Receiver transfer initiated', {
+        invoiceId: request.invoiceId,
+        txHash: receiverTransfer.hash,
+        status: receiverTransfer.status,
+      });
+
       // Transfer platform fee
       const platformFeeTransfer = await this.transfer({
         to: env.PLATFORM_WALLET_ADDRESS,
         amount: request.platformFee,
-        token: request.token === '0x0000000000000000000000000000000000000000' 
-          ? undefined 
-          : request.token,
+        token: isNativeToken ? undefined : request.token,
         reference: `invoice-${request.invoiceId}-fee`,
         metadata: {
           invoiceId: request.invoiceId,
@@ -348,6 +374,52 @@ export class BlockradarService {
       logger.error('Failed to check balance', { error, amount, token });
       return false;
     }
+  }
+
+  /**
+   * Poll transaction status until it's confirmed or failed
+   * Useful for operations that need to wait for confirmation
+   */
+  async pollTransactionStatus(
+    txId: string,
+    options?: {
+      maxAttempts?: number;
+      intervalMs?: number;
+      onUpdate?: (status: TransactionStatus) => void;
+    }
+  ): Promise<TransactionStatus> {
+    const maxAttempts = options?.maxAttempts || 60; // 60 attempts
+    const intervalMs = options?.intervalMs || 2000; // 2 seconds
+    let attempts = 0;
+
+    while (attempts < maxAttempts) {
+      try {
+        const status = await this.getTransactionStatus(txId);
+
+        if (options?.onUpdate) {
+          options.onUpdate(status);
+        }
+
+        if (status.status === 'SUCCESS' || status.status === 'FAILED') {
+          logger.info('Transaction finalized', {
+            txId,
+            status: status.status,
+            attempts,
+          });
+          return status;
+        }
+
+        // Still pending, wait and try again
+        await new Promise((resolve) => setTimeout(resolve, intervalMs));
+        attempts++;
+      } catch (error) {
+        logger.error('Error polling transaction status', { error, txId, attempts });
+        attempts++;
+        await new Promise((resolve) => setTimeout(resolve, intervalMs));
+      }
+    }
+
+    throw new Error(`Transaction polling timeout after ${maxAttempts} attempts for txId: ${txId}`);
   }
 }
 

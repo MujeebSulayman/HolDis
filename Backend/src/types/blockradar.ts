@@ -74,12 +74,39 @@ export interface ContractReadRequest {
 export interface ContractWriteRequest extends ContractReadRequest {
   reference?: string;
   metadata?: Record<string, unknown>;
+  // Batch operations
+  calls?: ContractCall[];
+}
+
+export interface ContractCall {
+  address: string;
+  method: string;
+  parameters: unknown[];
+  abi: unknown[];
+  reference?: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface ContractWriteResponse {
   id: string;
   hash: string;
   status: 'PENDING' | 'SUCCESS' | 'FAILED';
+}
+
+export interface BatchContractWriteResponse {
+  success: Array<{
+    index: number;
+    id: string;
+    hash: string;
+    status: 'PENDING' | 'SUCCESS' | 'FAILED';
+    reference?: string;
+  }>;
+  errors: Array<{
+    index: number;
+    method: string;
+    error: string;
+    message: string;
+  }>;
 }
 
 export interface ContractNetworkFeeRequest {

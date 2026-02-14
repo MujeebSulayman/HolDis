@@ -11,10 +11,11 @@ const envSchema = z.object({
   API_VERSION: z.string().default('v1'),
 
   // Blockchain
-  ETHEREUM_RPC_URL: z.string().url(),
+  RPC_URL: z.string().url(),
+  ETHEREUM_RPC_URL: z.string().url().optional(),
   ETHEREUM_TESTNET_RPC_URL: z.string().url().optional(),
   CHAIN_ID: z.string().transform(Number).default('1'),
-  CONTRACT_ADDRESS: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+  HOLDIS_CONTRACT_ADDRESS: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
 
   // Blockradar
   BLOCKRADAR_API_KEY: z.string().min(1),

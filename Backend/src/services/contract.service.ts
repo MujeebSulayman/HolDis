@@ -41,12 +41,12 @@ export class ContractService {
   private chain: typeof mainnet | typeof sepolia;
 
   constructor() {
-    this.contractAddress = env.CONTRACT_ADDRESS as Address;
+    this.contractAddress = env.HOLDIS_CONTRACT_ADDRESS as Address;
     this.chain = env.CHAIN_ID === 1 ? mainnet : sepolia;
 
     this.publicClient = createPublicClient({
       chain: this.chain,
-      transport: http(env.ETHEREUM_RPC_URL),
+      transport: http(env.RPC_URL),
     });
 
     logger.info('Contract service initialized', {

@@ -4,6 +4,7 @@ import { env } from '../config/env';
 import { logger } from '../utils/logger';
 import { contractService } from './contract.service';
 import { blockradarService } from './blockradar.service';
+import { gasManagerService } from './gas-manager.service';
 import { InvoiceStatus } from '../types/contract';
 
 export class EventListenerService {
@@ -35,6 +36,9 @@ export class EventListenerService {
     this.isListening = true;
 
     try {
+      // ⚡ Check gas balance before starting
+      await gasManagerService.monitorGasBalance();
+
       // Get the latest block to start from
       this.lastProcessedBlock = await contractService.getBlockNumber();
       logger.info('Event listener initialized', {
@@ -54,6 +58,11 @@ export class EventListenerService {
       this.watchDeliveryConfirmed();
       this.watchInvoiceCompleted();
       this.watchInvoiceCancelled();
+
+      // ⚡ Monitor gas balance every 5 minutes
+      setInterval(async () => {
+        await gasManagerService.monitorGasBalance();
+      }, 5 * 60 * 1000);
 
     } catch (error) {
       logger.error('Failed to start event listener', { error });
@@ -352,6 +361,26 @@ export class EventListenerService {
       // Get full invoice details
       const invoice = await contractService.getInvoice(invoiceId);
 
+      // ⚡ CHECK GAS BALANCE BEFORE EXECUTING TRANSFERS
+      const gasCheck = await gasManagerService.checkGasBalance();
+      if (!gasCheck.hasEnough) {
+        const errorMsg = `Insufficient gas balance to process invoice ${invoiceId}. Current balance: ${gasCheck.nativeBalance} ETH`;
+        logger.error(errorMsg, {
+          invoiceId: invoiceId.toString(),
+          nativeBalance: gasCheck.nativeBalance,
+          nativeBalanceInUSD: gasCheck.nativeBalanceInUSD,
+        });
+        
+        // Alert admin and queue for manual processing
+        // await notificationService.sendLowGasAlert(invoiceId, gasCheck);
+        throw new Error(errorMsg);
+      }
+
+      logger.info('Gas balance check passed', {
+        invoiceId: invoiceId.toString(),
+        nativeBalance: gasCheck.nativeBalance,
+      });
+
       // Release funds from custody to receiver and collect platform fee
       const { receiverTransfer, platformFeeTransfer } = await blockradarService.releaseFunds({
         invoiceId: invoiceId.toString(),
@@ -378,6 +407,7 @@ export class EventListenerService {
     } catch (error) {
       logger.error('Failed to handle InvoiceCompleted event', { error, log });
       // Implement retry logic or alert admin
+      throw error;
     }
   }
 
