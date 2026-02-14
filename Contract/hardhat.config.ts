@@ -36,11 +36,20 @@ export default defineConfig({
       type: "edr-simulated",
       chainType: "op",
     },
-    sepolia: {
+ 
+    base: {
       type: "http",
-      chainType: "l1",
-      url: configVariable("SEPOLIA_RPC_URL"),
-      accounts: [configVariable("SEPOLIA_PRIVATE_KEY")],
+      chainType: "op",
+      url: configVariable("BASE_RPC_URL", "https://mainnet.base.org"),
+      accounts: [configVariable("BASE_PRIVATE_KEY")],
+      chainId: 8453,
+    },
+    baseSepolia: {
+      type: "http",
+      chainType: "op",
+      url: configVariable("BASE_SEPOLIA_RPC_URL", "https://sepolia.base.org"),
+      accounts: [configVariable("BASE_SEPOLIA_PRIVATE_KEY")],
+      chainId: 84532,
     },
   },
 });
