@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { invoiceController } from '../controllers/invoice.controller';
+import { authenticate } from '../middlewares/auth.middleware';
 
 const router = Router();
 
@@ -9,6 +10,8 @@ const router = Router();
  *   post:
  *     summary: Create a new invoice
  *     tags: [Invoices]
+ *     security:
+ *       - BearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -18,8 +21,10 @@ const router = Router();
  *     responses:
  *       201:
  *         description: Invoice creation initiated
+ *       401:
+ *         description: Unauthorized
  */
-router.post('/create', (req, res) => invoiceController.createInvoice(req, res));
+router.post('/create', authenticate, (req, res) => invoiceController.createInvoice(req, res));
 
 /**
  * @swagger
@@ -66,7 +71,7 @@ router.get('/:invoiceId', (req, res) => invoiceController.getInvoice(req, res));
  *       200:
  *         description: Invoice funding initiated
  */
-router.post('/:invoiceId/fund', (req, res) => invoiceController.fundInvoice(req, res));
+router.post('/:invoiceId/fund', authenticate, (req, res) => invoiceController.fundInvoice(req, res));
 
 /**
  * @swagger
@@ -96,7 +101,7 @@ router.post('/:invoiceId/fund', (req, res) => invoiceController.fundInvoice(req,
  *       200:
  *         description: Delivery submission initiated
  */
-router.post('/:invoiceId/deliver', (req, res) => invoiceController.submitDelivery(req, res));
+router.post('/:invoiceId/deliver', authenticate, (req, res) => invoiceController.submitDelivery(req, res));
 
 /**
  * @swagger
@@ -126,7 +131,7 @@ router.post('/:invoiceId/deliver', (req, res) => invoiceController.submitDeliver
  *       200:
  *         description: Delivery confirmation initiated
  */
-router.post('/:invoiceId/confirm', (req, res) => invoiceController.confirmDelivery(req, res));
+router.post('/:invoiceId/confirm', authenticate, (req, res) => invoiceController.confirmDelivery(req, res));
 
 /**
  * @swagger
@@ -149,6 +154,6 @@ router.post('/:invoiceId/confirm', (req, res) => invoiceController.confirmDelive
  *       200:
  *         description: User's invoices
  */
-router.get('/user/:userId', (req, res) => invoiceController.getUserInvoices(req, res));
+router.get('/user/:userId', authenticate, (req, res) => invoiceController.getUserInvoices(req, res));
 
 export default router;

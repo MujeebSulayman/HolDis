@@ -4,7 +4,39 @@ import { userWalletService } from '../services/user-wallet.service';
 import { logger } from '../utils/logger';
 
 export class UserController {
-  
+  async login(req: Request, res: Response): Promise<void> {
+    try {
+      const { email, password } = req.body;
+
+      if (!email || !password) {
+        res.status(400).json({
+          error: 'Missing required fields',
+          message: 'Email and password are required',
+        });
+        return;
+      }
+
+      const result = await userService.login(email, password);
+
+      logger.info('User logged in via API', {
+        userId: result.user.id,
+        email: result.user.email,
+      });
+
+      res.status(200).json({
+        success: true,
+        message: 'Login successful',
+        data: result,
+      });
+    } catch (error) {
+      logger.error('Login API error', { error });
+      res.status(401).json({
+        error: 'Login failed',
+        message: error instanceof Error ? error.message : 'Invalid credentials',
+      });
+    }
+  }
+
   async register(req: Request, res: Response): Promise<void> {
     try {
       const { email, name, password } = req.body;
