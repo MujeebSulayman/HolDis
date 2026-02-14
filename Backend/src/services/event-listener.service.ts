@@ -14,7 +14,7 @@ export class EventListenerService {
   private lastProcessedBlock: bigint = 0n;
 
   constructor() {
-    this.contractAddress = env.CONTRACT_ADDRESS as Address;
+    this.contractAddress = env.HOLDIS_CONTRACT_ADDRESS as Address;
     const chain = env.CHAIN_ID === 1 ? mainnet : sepolia;
 
     this.publicClient = createPublicClient({
@@ -23,9 +23,6 @@ export class EventListenerService {
     });
   }
 
-  /**
-   * Start listening to contract events
-   */
   async start(): Promise<void> {
     if (this.isListening) {
       logger.warn('Event listener already running');
@@ -36,31 +33,26 @@ export class EventListenerService {
     this.isListening = true;
 
     try {
-      // ⚡ Check gas balance before starting
-      await gasManagerService.monitorGasBalance();
+            await gasManagerService.monitorGasBalance();
 
-      // Get the latest block to start from
-      this.lastProcessedBlock = await contractService.getBlockNumber();
+            this.lastProcessedBlock = await contractService.getBlockNumber();
       logger.info('Event listener initialized', {
         startBlock: this.lastProcessedBlock.toString(),
       });
 
-      // Watch for new blocks and process events
-      contractService.watchBlocks(async (blockNumber) => {
+            contractService.watchBlocks(async (blockNumber) => {
         await this.processBlockEvents(this.lastProcessedBlock + 1n, blockNumber);
         this.lastProcessedBlock = blockNumber;
       });
 
-      // Listen to specific events
-      this.watchInvoiceCreated();
+            this.watchInvoiceCreated();
       this.watchInvoiceFunded();
       this.watchDeliverySubmitted();
       this.watchDeliveryConfirmed();
       this.watchInvoiceCompleted();
       this.watchInvoiceCancelled();
 
-      // ⚡ Monitor gas balance every 5 minutes
-      setInterval(async () => {
+            setInterval(async () => {
         await gasManagerService.monitorGasBalance();
       }, 5 * 60 * 1000);
 
@@ -71,17 +63,11 @@ export class EventListenerService {
     }
   }
 
-  /**
-   * Stop listening to events
-   */
   stop(): void {
     this.isListening = false;
     logger.info('Event listener stopped');
   }
 
-  /**
-   * Process events for a range of blocks
-   */
   private async processBlockEvents(fromBlock: bigint, toBlock: bigint): Promise<void> {
     if (fromBlock > toBlock) return;
 
@@ -91,8 +77,7 @@ export class EventListenerService {
         toBlock: toBlock.toString(),
       });
 
-      // Get all events for the block range
-      const events = [
+            const events = [
         'InvoiceCreated',
         'InvoiceFunded',
         'DeliverySubmitted',
@@ -113,9 +98,6 @@ export class EventListenerService {
     }
   }
 
-  /**
-   * Process individual event
-   */
   private async processEvent(eventName: string, log: Log): Promise<void> {
     try {
       logger.info('Processing event', {
@@ -149,9 +131,6 @@ export class EventListenerService {
     }
   }
 
-  /**
-   * Watch for InvoiceCreated events
-   */
   private watchInvoiceCreated(): void {
     this.publicClient.watchContractEvent({
       address: this.contractAddress,
@@ -165,9 +144,6 @@ export class EventListenerService {
     });
   }
 
-  /**
-   * Handle InvoiceCreated event
-   */
   private async handleInvoiceCreated(log: Log): Promise<void> {
     try {
       const { args } = log as any;
@@ -183,20 +159,11 @@ export class EventListenerService {
         requiresDelivery,
       });
 
-      // Store in database (implementation depends on your DB choice)
-      // await db.invoice.create({ ... });
-
-      // Send notifications
-      // await notificationService.sendInvoiceCreated(payer, invoiceId);
-
     } catch (error) {
       logger.error('Failed to handle InvoiceCreated event', { error, log });
     }
   }
 
-  /**
-   * Watch for InvoiceFunded events
-   */
   private watchInvoiceFunded(): void {
     this.publicClient.watchContractEvent({
       address: this.contractAddress,
@@ -210,10 +177,6 @@ export class EventListenerService {
     });
   }
 
-  /**
-   * Handle InvoiceFunded event
-   * This is where we record that funds are in custody
-   */
   private async handleInvoiceFunded(log: Log): Promise<void> {
     try {
       const { args } = log as any;
@@ -225,31 +188,20 @@ export class EventListenerService {
         amount: amount.toString(),
       });
 
-      // Get full invoice details
-      const invoice = await contractService.getInvoice(invoiceId);
+            const invoice = await contractService.getInvoice(invoiceId);
 
-      // Record funds in custody
-      await blockradarService.holdFunds({
+            await blockradarService.holdFunds({
         walletAddress: payer,
         amount: amount.toString(),
         token: invoice.tokenAddress,
         invoiceId: invoiceId.toString(),
       });
 
-      // Update database
-      // await db.invoice.update({ ... });
-
-      // Send notification to issuer
-      // await notificationService.sendInvoiceFunded(invoice.issuer, invoiceId);
-
     } catch (error) {
       logger.error('Failed to handle InvoiceFunded event', { error, log });
     }
   }
 
-  /**
-   * Watch for DeliverySubmitted events
-   */
   private watchDeliverySubmitted(): void {
     this.publicClient.watchContractEvent({
       address: this.contractAddress,
@@ -263,9 +215,6 @@ export class EventListenerService {
     });
   }
 
-  /**
-   * Handle DeliverySubmitted event
-   */
   private async handleDeliverySubmitted(log: Log): Promise<void> {
     try {
       const { args } = log as any;
@@ -277,23 +226,13 @@ export class EventListenerService {
         proofHash,
       });
 
-      // Get invoice details
-      const invoice = await contractService.getInvoice(invoiceId);
-
-      // Update database
-      // await db.invoice.update({ ... });
-
-      // Notify receiver to confirm delivery
-      // await notificationService.sendDeliverySubmitted(invoice.receiver, invoiceId, proofHash);
+            const invoice = await contractService.getInvoice(invoiceId);
 
     } catch (error) {
       logger.error('Failed to handle DeliverySubmitted event', { error, log });
     }
   }
 
-  /**
-   * Watch for DeliveryConfirmed events
-   */
   private watchDeliveryConfirmed(): void {
     this.publicClient.watchContractEvent({
       address: this.contractAddress,
@@ -307,9 +246,6 @@ export class EventListenerService {
     });
   }
 
-  /**
-   * Handle DeliveryConfirmed event
-   */
   private async handleDeliveryConfirmed(log: Log): Promise<void> {
     try {
       const { args } = log as any;
@@ -320,17 +256,11 @@ export class EventListenerService {
         receiver,
       });
 
-      // This event triggers before InvoiceCompleted
-      // The actual fund release happens in InvoiceCompleted handler
-
     } catch (error) {
       logger.error('Failed to handle DeliveryConfirmed event', { error, log });
     }
   }
 
-  /**
-   * Watch for InvoiceCompleted events
-   */
   private watchInvoiceCompleted(): void {
     this.publicClient.watchContractEvent({
       address: this.contractAddress,
@@ -344,10 +274,6 @@ export class EventListenerService {
     });
   }
 
-  /**
-   * Handle InvoiceCompleted event
-   * This is where we execute the actual fund transfer
-   */
   private async handleInvoiceCompleted(log: Log): Promise<void> {
     try {
       const { args } = log as any;
@@ -358,11 +284,9 @@ export class EventListenerService {
         platformFeeCollected: platformFeeCollected.toString(),
       });
 
-      // Get full invoice details
-      const invoice = await contractService.getInvoice(invoiceId);
+            const invoice = await contractService.getInvoice(invoiceId);
 
-      // ⚡ CHECK GAS BALANCE BEFORE EXECUTING TRANSFERS
-      const gasCheck = await gasManagerService.checkGasBalance();
+            const gasCheck = await gasManagerService.checkGasBalance();
       if (!gasCheck.hasEnough) {
         const errorMsg = `Insufficient gas balance to process invoice ${invoiceId}. Current balance: ${gasCheck.nativeBalance} ETH`;
         logger.error(errorMsg, {
@@ -371,9 +295,7 @@ export class EventListenerService {
           nativeBalanceInUSD: gasCheck.nativeBalanceInUSD,
         });
         
-        // Alert admin and queue for manual processing
-        // await notificationService.sendLowGasAlert(invoiceId, gasCheck);
-        throw new Error(errorMsg);
+                        throw new Error(errorMsg);
       }
 
       logger.info('Gas balance check passed', {
@@ -381,8 +303,7 @@ export class EventListenerService {
         nativeBalance: gasCheck.nativeBalance,
       });
 
-      // Release funds from custody to receiver and collect platform fee
-      const { receiverTransfer, platformFeeTransfer } = await blockradarService.releaseFunds({
+            const { receiverTransfer, platformFeeTransfer } = await blockradarService.releaseFunds({
         invoiceId: invoiceId.toString(),
         toAddress: invoice.receiver,
         amount: invoice.amount.toString(),
@@ -396,24 +317,12 @@ export class EventListenerService {
         platformFeeTxHash: platformFeeTransfer.hash,
       });
 
-      // Update database with transaction hashes
-      // await db.invoice.update({ ... });
-      // await db.transaction.createMany([...]);
-
-      // Send completion notifications
-      // await notificationService.sendInvoiceCompleted(invoice.receiver, invoiceId);
-      // await notificationService.sendInvoiceCompleted(invoice.issuer, invoiceId);
-
     } catch (error) {
       logger.error('Failed to handle InvoiceCompleted event', { error, log });
-      // Implement retry logic or alert admin
-      throw error;
+            throw error;
     }
   }
 
-  /**
-   * Watch for InvoiceCancelled events
-   */
   private watchInvoiceCancelled(): void {
     this.publicClient.watchContractEvent({
       address: this.contractAddress,
@@ -427,9 +336,6 @@ export class EventListenerService {
     });
   }
 
-  /**
-   * Handle InvoiceCancelled event
-   */
   private async handleInvoiceCancelled(log: Log): Promise<void> {
     try {
       const { args } = log as any;
@@ -441,11 +347,9 @@ export class EventListenerService {
         reason,
       });
 
-      // Get invoice details
-      const invoice = await contractService.getInvoice(invoiceId);
+            const invoice = await contractService.getInvoice(invoiceId);
 
-      // If invoice was funded, refund to payer
-      if (invoice.status === InvoiceStatus.Cancelled && invoice.fundedAt > 0n) {
+            if (invoice.status === InvoiceStatus.Cancelled && invoice.fundedAt > 0n) {
         await blockradarService.refundFunds(
           invoiceId.toString(),
           invoice.payer,
@@ -454,20 +358,11 @@ export class EventListenerService {
         );
       }
 
-      // Update database
-      // await db.invoice.update({ ... });
-
-      // Send notifications
-      // await notificationService.sendInvoiceCancelled(invoice.payer, invoiceId, reason);
-
     } catch (error) {
       logger.error('Failed to handle InvoiceCancelled event', { error, log });
     }
   }
 
-  /**
-   * Get status
-   */
   getStatus(): { isListening: boolean; lastProcessedBlock: string } {
     return {
       isListening: this.isListening,
@@ -476,5 +371,4 @@ export class EventListenerService {
   }
 }
 
-// Export singleton instance
 export const eventListenerService = new EventListenerService();

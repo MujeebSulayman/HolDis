@@ -7,15 +7,11 @@ import { logger } from '../utils/logger';
 import { env } from '../config/env';
 
 export class InvoiceController {
-  /**
-   * POST /api/invoices/create
-   * Create invoice using child address (issuer's wallet)
-   */
+  
   async createInvoice(req: Request, res: Response): Promise<void> {
     try {
       const {
-        userId, // issuer
-        payer,
+        userId,         payer,
         receiver,
         amount,
         tokenAddress,
@@ -24,8 +20,7 @@ export class InvoiceController {
         attachmentHash,
       } = req.body;
 
-      // Validate
-      if (!userId || !payer || !receiver || !amount) {
+            if (!userId || !payer || !receiver || !amount) {
         res.status(400).json({
           error: 'Missing required fields',
           message: 'userId, payer, receiver, and amount are required',
@@ -33,11 +28,9 @@ export class InvoiceController {
         return;
       }
 
-      // Get user's child address ID
-      const addressId = await userService.getUserWalletAddressId(userId);
+            const addressId = await userService.getUserWalletAddressId(userId);
 
-      // Prepare contract call
-      const holdisAbi = [
+            const holdisAbi = [
         {
           name: 'createInvoice',
           type: 'function',
@@ -55,11 +48,9 @@ export class InvoiceController {
         },
       ];
 
-      // Generate unique reference for tracking
-      const reference = `invoice-create-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+            const reference = `invoice-create-${Date.now()}-${Math.random().toString(36).substring(7)}`;
 
-      // Call contract via child address with proper tracking
-      const result = await userWalletService.writeContractFromChildAddress(addressId, {
+            const result = await userWalletService.writeContractFromChildAddress(addressId, {
         address: env.HOLDIS_CONTRACT_ADDRESS,
         method: 'createInvoice',
         parameters: [
@@ -111,16 +102,10 @@ export class InvoiceController {
     }
   }
 
-  /**
-   * POST /api/invoices/:invoiceId/fund
-   * Fund invoice using child address (payer's wallet)
-   * Uses BATCH OPERATIONS for approve + fund in one API call
-   */
   async fundInvoice(req: Request, res: Response): Promise<void> {
     try {
       const { invoiceId } = req.params;
-      const { userId } = req.body; // payer's userId
-
+      const { userId } = req.body; 
       if (!userId) {
         res.status(400).json({
           error: 'Missing userId',
@@ -129,8 +114,7 @@ export class InvoiceController {
         return;
       }
 
-      // Get invoice details
-      const invoice = await contractService.getInvoice(BigInt(invoiceId));
+            const invoice = await contractService.getInvoice(BigInt(invoiceId));
       if (!invoice) {
         res.status(404).json({
           error: 'Invoice not found',
@@ -138,14 +122,11 @@ export class InvoiceController {
         return;
       }
 
-      // Get payer's child address ID
-      const addressId = await userService.getUserWalletAddressId(userId);
+            const addressId = await userService.getUserWalletAddressId(userId);
 
-      // Check if ERC20 token
-      const isERC20 = invoice.tokenAddress !== '0x0000000000000000000000000000000000000000';
+            const isERC20 = invoice.tokenAddress !== '0x0000000000000000000000000000000000000000';
 
-      // Prepare ABIs
-      const approveAbi = [
+            const approveAbi = [
         {
           name: 'approve',
           type: 'function',
@@ -168,10 +149,8 @@ export class InvoiceController {
         },
       ];
 
-      // If ERC20, use BATCH operation for approve + fund
-      if (isERC20) {
-        // Estimate gas first
-        const gasEstimate = await userWalletService.estimateNetworkFeeForChildAddress(
+            if (isERC20) {
+                const gasEstimate = await userWalletService.estimateNetworkFeeForChildAddress(
           addressId,
           {
             address: invoice.tokenAddress,
@@ -187,8 +166,7 @@ export class InvoiceController {
           gasUSD: gasEstimate.networkFeeInUSD,
         });
 
-        // Check balance
-        if (parseFloat(gasEstimate.nativeBalance) < parseFloat(gasEstimate.networkFee) * 2) {
+                if (parseFloat(gasEstimate.nativeBalance) < parseFloat(gasEstimate.networkFee) * 2) {
           res.status(400).json({
             error: 'Insufficient gas balance',
             message: 'Not enough native token for gas fees',
@@ -200,8 +178,7 @@ export class InvoiceController {
           return;
         }
 
-        // BATCH: approve + markAsFunded in one call
-        const batchResult = await blockradarService.writeContract({
+                const batchResult = await blockradarService.writeContract({
           calls: [
             {
               address: invoice.tokenAddress,
@@ -248,8 +225,7 @@ export class InvoiceController {
           },
         });
       } else {
-        // Native token: just mark as funded
-        const result = await userWalletService.writeContractFromChildAddress(addressId, {
+                const result = await userWalletService.writeContractFromChildAddress(addressId, {
           address: env.HOLDIS_CONTRACT_ADDRESS,
           method: 'markAsFunded',
           parameters: [invoiceId],
@@ -283,15 +259,10 @@ export class InvoiceController {
     }
   }
 
-  /**
-   * POST /api/invoices/:invoiceId/deliver
-   * Submit delivery proof using child address (issuer's wallet)
-   */
   async submitDelivery(req: Request, res: Response): Promise<void> {
     try {
       const { invoiceId } = req.params;
-      const { userId, deliveryProof } = req.body; // issuer's userId
-
+      const { userId, deliveryProof } = req.body; 
       const addressId = await userService.getUserWalletAddressId(userId);
       const reference = `delivery-submit-${invoiceId}-${Date.now()}`;
 
@@ -339,15 +310,10 @@ export class InvoiceController {
     }
   }
 
-  /**
-   * POST /api/invoices/:invoiceId/confirm
-   * Confirm delivery using child address (payer's wallet)
-   */
   async confirmDelivery(req: Request, res: Response): Promise<void> {
     try {
       const { invoiceId } = req.params;
-      const { userId, confirmationNotes } = req.body; // payer's userId
-
+      const { userId, confirmationNotes } = req.body; 
       const addressId = await userService.getUserWalletAddressId(userId);
       const reference = `delivery-confirm-${invoiceId}-${Date.now()}`;
 
@@ -395,10 +361,6 @@ export class InvoiceController {
     }
   }
 
-  /**
-   * GET /api/invoices/:invoiceId
-   * Get invoice details
-   */
   async getInvoice(req: Request, res: Response): Promise<void> {
     try {
       const { invoiceId } = req.params;
@@ -424,17 +386,11 @@ export class InvoiceController {
     }
   }
 
-  /**
-   * GET /api/users/:userId/invoices
-   * Get user's invoices (issued, paying, or receiving)
-   */
   async getUserInvoices(req: Request, res: Response): Promise<void> {
     try {
       const { userId } = req.params;
-      const { role } = req.query; // 'issuer', 'payer', 'receiver'
-
-      // Get user's wallet address
-      const wallet = await userWalletService.getUserWallet(userId);
+      const { role } = req.query; 
+            const wallet = await userWalletService.getUserWallet(userId);
       if (!wallet) {
         res.status(404).json({
           error: 'User wallet not found',
@@ -454,8 +410,7 @@ export class InvoiceController {
           invoices = await contractService.getReceiverInvoices(wallet.address);
           break;
         default:
-          // Get all invoices for user
-          const [issued, paying, receiving] = await Promise.all([
+                    const [issued, paying, receiving] = await Promise.all([
             contractService.getIssuerInvoices(wallet.address),
             contractService.getPayerInvoices(wallet.address),
             contractService.getReceiverInvoices(wallet.address),
@@ -477,5 +432,4 @@ export class InvoiceController {
   }
 }
 
-// Export singleton instance
 export const invoiceController = new InvoiceController();

@@ -47,13 +47,11 @@ const consoleFormat = winston.format.combine(
 );
 
 const transports = [
-  // Console transport
-  new winston.transports.Console({
+    new winston.transports.Console({
     format: env.NODE_ENV === 'production' ? format : consoleFormat,
   }),
 ];
 
-// File transports for production
 if (env.NODE_ENV === 'production') {
   transports.push(
     new winston.transports.File({
@@ -76,7 +74,6 @@ export const logger = winston.createLogger({
   exitOnError: false,
 });
 
-// Create a stream for Morgan HTTP logger
 export const loggerStream = {
   write: (message: string) => {
     logger.info(message.trim());

@@ -14,10 +14,8 @@ import {
   InvoiceCancelledEvent,
 } from '../types/contract';
 
-// Contract ABI (only the functions we need)
 const holdisAbi = parseAbi([
-  // Read functions
-  'function getInvoice(uint256 invoiceId) external view returns (tuple(uint256 id, address issuer, address payer, address receiver, uint256 amount, address tokenAddress, uint8 status, bool requiresDelivery, string description, string attachmentHash, uint256 createdAt, uint256 fundedAt, uint256 deliveredAt, uint256 completedAt))',
+    'function getInvoice(uint256 invoiceId) external view returns (tuple(uint256 id, address issuer, address payer, address receiver, uint256 amount, address tokenAddress, uint8 status, bool requiresDelivery, string description, string attachmentHash, uint256 createdAt, uint256 fundedAt, uint256 deliveredAt, uint256 completedAt))',
   'function getTotalInvoices() external view returns (uint256)',
   'function getIssuerInvoices(address issuer, uint256 offset, uint256 limit) external view returns (uint256[], uint256)',
   'function getPayerInvoices(address payer, uint256 offset, uint256 limit) external view returns (uint256[], uint256)',
@@ -25,8 +23,7 @@ const holdisAbi = parseAbi([
   'function platformSettings() external view returns (tuple(uint256 platformFee, uint256 maxInvoiceAmount, uint256 minInvoiceAmount))',
   'function supportedTokens(address token) external view returns (bool)',
   
-  // Events
-  'event InvoiceCreated(uint256 indexed invoiceId, address indexed issuer, address indexed payer, address receiver, uint256 amount, address token, bool requiresDelivery, uint256 timestamp)',
+    'event InvoiceCreated(uint256 indexed invoiceId, address indexed issuer, address indexed payer, address receiver, uint256 amount, address token, bool requiresDelivery, uint256 timestamp)',
   'event InvoiceFunded(uint256 indexed invoiceId, address indexed payer, uint256 amount, uint256 timestamp)',
   'event DeliverySubmitted(uint256 indexed invoiceId, address indexed issuer, string proofHash, uint256 timestamp)',
   'event DeliveryConfirmed(uint256 indexed invoiceId, address indexed receiver, uint256 timestamp)',
@@ -55,9 +52,6 @@ export class ContractService {
     });
   }
 
-  /**
-   * Get invoice details from smart contract
-   */
   async getInvoice(invoiceId: bigint): Promise<Invoice> {
     try {
       const invoice = await this.publicClient.readContract({
@@ -65,7 +59,7 @@ export class ContractService {
         abi: holdisAbi,
         functionName: 'getInvoice',
         args: [invoiceId],
-      });
+      }) as any;
 
       return {
         id: invoice.id,
@@ -89,16 +83,13 @@ export class ContractService {
     }
   }
 
-  /**
-   * Get total number of invoices
-   */
   async getTotalInvoices(): Promise<bigint> {
     try {
       const total = await this.publicClient.readContract({
         address: this.contractAddress,
         abi: holdisAbi,
         functionName: 'getTotalInvoices',
-      });
+      }) as bigint;
       return total;
     } catch (error) {
       logger.error('Failed to get total invoices', { error });
@@ -106,9 +97,6 @@ export class ContractService {
     }
   }
 
-  /**
-   * Get invoices for a specific issuer
-   */
   async getIssuerInvoices(
     issuer: Address,
     offset: bigint = 0n,
@@ -120,7 +108,7 @@ export class ContractService {
         abi: holdisAbi,
         functionName: 'getIssuerInvoices',
         args: [issuer, offset, limit],
-      });
+      }) as [bigint[], bigint];
       return { invoiceIds, total };
     } catch (error) {
       logger.error('Failed to get issuer invoices', { error, issuer });
@@ -128,9 +116,6 @@ export class ContractService {
     }
   }
 
-  /**
-   * Get invoices for a specific payer
-   */
   async getPayerInvoices(
     payer: Address,
     offset: bigint = 0n,
@@ -150,9 +135,6 @@ export class ContractService {
     }
   }
 
-  /**
-   * Get invoices for a specific receiver
-   */
   async getReceiverInvoices(
     receiver: Address,
     offset: bigint = 0n,
@@ -172,9 +154,6 @@ export class ContractService {
     }
   }
 
-  /**
-   * Get platform settings
-   */
   async getPlatformSettings(): Promise<PlatformSettings> {
     try {
       const settings = await this.publicClient.readContract({
@@ -194,9 +173,6 @@ export class ContractService {
     }
   }
 
-  /**
-   * Check if a token is supported
-   */
   async isTokenSupported(token: Address): Promise<boolean> {
     try {
       const supported = await this.publicClient.readContract({
@@ -212,16 +188,10 @@ export class ContractService {
     }
   }
 
-  /**
-   * Format amount for display (converts from wei to token decimals)
-   */
   formatAmount(amount: bigint, decimals: number = 18): string {
     return formatUnits(amount, decimals);
   }
 
-  /**
-   * Get current block number
-   */
   async getBlockNumber(): Promise<bigint> {
     try {
       const blockNumber = await this.publicClient.getBlockNumber();
@@ -232,9 +202,6 @@ export class ContractService {
     }
   }
 
-  /**
-   * Get transaction receipt
-   */
   async getTransactionReceipt(txHash: `0x${string}`) {
     try {
       const receipt = await this.publicClient.getTransactionReceipt({ hash: txHash });
@@ -245,27 +212,17 @@ export class ContractService {
     }
   }
 
-  /**
-   * Calculate platform fee for an amount
-   */
   calculatePlatformFee(amount: bigint, feeInBasisPoints: bigint): bigint {
     return (amount * feeInBasisPoints) / 10000n;
   }
 
-  /**
-   * Watch for new blocks and process events
-   */
   watchBlocks(callback: (blockNumber: bigint) => void) {
     return this.publicClient.watchBlockNumber({
       onBlockNumber: callback,
       poll: true,
-      pollingInterval: 12_000, // 12 seconds
-    });
+      pollingInterval: 12_000,     });
   }
 
-  /**
-   * Get contract logs for a specific event
-   */
   async getLogs(
     eventName: string,
     fromBlock?: bigint,
@@ -286,5 +243,4 @@ export class ContractService {
   }
 }
 
-// Export singleton instance
-export const contractService = new ContractService();
+export const contractService = ne

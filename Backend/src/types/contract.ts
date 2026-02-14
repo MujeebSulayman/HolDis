@@ -31,7 +31,6 @@ export interface PlatformSettings {
   minInvoiceAmount: bigint;
 }
 
-// Contract Events
 export interface InvoiceCreatedEvent {
   invoiceId: bigint;
   issuer: Address;
@@ -83,7 +82,6 @@ export interface InvoiceStatusUpdatedEvent {
   timestamp: bigint;
 }
 
-// Database Types
 export interface InvoiceRecord {
   id: string;
   issuer: string;

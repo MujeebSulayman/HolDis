@@ -2,9 +2,7 @@ export interface User {
   id: string;
   email: string;
   name?: string;
-  walletAddressId: string;  // Blockradar child address ID
-  walletAddress: string;    // Blockchain address
-  kycStatus: 'pending' | 'verified' | 'rejected';
+  walletAddressId: string;    walletAddress: string;      kycStatus: 'pending' | 'verified' | 'rejected';
   createdAt: Date;
   updatedAt: Date;
 }

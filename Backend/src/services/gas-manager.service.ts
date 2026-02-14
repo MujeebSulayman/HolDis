@@ -3,10 +3,7 @@ import { logger } from '../utils/logger';
 import { ContractWriteRequest, ContractNetworkFeeResponse } from '../types/blockradar';
 
 export class GasManagerService {
-  /**
-   * Estimate gas fees and validate wallet has sufficient balance
-   * @throws Error if insufficient balance
-   */
+  
   async validateAndEstimateGas(
     request: Omit<ContractWriteRequest, 'reference' | 'metadata'>
   ): Promise<ContractNetworkFeeResponse> {
@@ -16,8 +13,7 @@ export class GasManagerService {
         method: request.method,
       });
 
-      // Estimate network fees
-      const feeEstimate = await blockradarService.estimateNetworkFee({
+            const feeEstimate = await blockradarService.estimateNetworkFee({
         address: request.address,
         method: request.method,
         parameters: request.parameters,
@@ -31,8 +27,7 @@ export class GasManagerService {
         estimatedArrival: feeEstimate.estimatedArrivalTime,
       });
 
-      // Check if wallet has sufficient native balance for gas
-      const requiredBalance = BigInt(
+            const requiredBalance = BigInt(
         Math.ceil(parseFloat(feeEstimate.networkFee) * 1e18)
       );
       const availableBalance = BigInt(
@@ -48,8 +43,7 @@ export class GasManagerService {
         throw new Error(errorMsg);
       }
 
-      // Add buffer check (ensure 20% more than estimated)
-      const bufferMultiplier = 1.2;
+            const bufferMultiplier = 1.2;
       const requiredWithBuffer = BigInt(
         Math.ceil(parseFloat(feeEstimate.networkFee) * bufferMultiplier * 1e18)
       );
@@ -69,9 +63,6 @@ export class GasManagerService {
     }
   }
 
-  /**
-   * Check if wallet has sufficient native balance for gas
-   */
   async checkGasBalance(): Promise<{
     hasEnough: boolean;
     nativeBalance: string;
@@ -80,8 +71,7 @@ export class GasManagerService {
     try {
       const balance = await blockradarService.getWalletBalance();
 
-      const hasEnough = parseFloat(balance.nativeBalance) > 0.01; // At least 0.01 ETH
-
+      const hasEnough = parseFloat(balance.nativeBalance) > 0.01; 
       return {
         hasEnough,
         nativeBalance: balance.nativeBalance,
@@ -93,9 +83,6 @@ export class GasManagerService {
     }
   }
 
-  /**
-   * Calculate total gas cost for multiple operations
-   */
   async estimateBatchGasCost(
     requests: Array<Omit<ContractWriteRequest, 'reference' | 'metadata'>>
   ): Promise<{
@@ -131,8 +118,7 @@ export class GasManagerService {
         operationCount: requests.length,
       });
 
-      // Validate total cost
-      const balance = await blockradarService.getWalletBalance();
+            const balance = await blockradarService.getWalletBalance();
       const availableBalance = parseFloat(balance.nativeBalance);
       const requiredBalance = parseFloat(totalGas);
 
@@ -153,22 +139,12 @@ export class GasManagerService {
     }
   }
 
-  /**
-   * Get recommended gas buffer multiplier based on network conditions
-   */
   getRecommendedBufferMultiplier(estimatedArrivalTime: number): number {
-    // If estimated arrival time is high, network is congested
-    if (estimatedArrivalTime > 60) {
-      return 1.5; // 50% buffer for congested network
-    } else if (estimatedArrivalTime > 30) {
-      return 1.3; // 30% buffer for moderate traffic
-    }
-    return 1.2; // 20% buffer for normal conditions
-  }
+        if (estimatedArrivalTime > 60) {
+      return 1.5;     } else if (estimatedArrivalTime > 30) {
+      return 1.3;     }
+    return 1.2;   }
 
-  /**
-   * Monitor wallet balance and alert if low
-   */
   async monitorGasBalance(threshold: number = 0.05): Promise<void> {
     try {
       const { nativeBalance, nativeBalanceInUSD } = await blockradarService.getWalletBalance();
@@ -182,9 +158,7 @@ export class GasManagerService {
           message: 'Please fund wallet to continue operations',
         });
 
-        // TODO: Send alert notification to admin
-        // await notificationService.sendLowBalanceAlert(balance);
-      } else {
+                      } else {
         logger.info('Gas balance check passed', {
           balance: nativeBalance,
           balanceInUSD: nativeBalanceInUSD,
@@ -196,5 +170,4 @@ export class GasManagerService {
   }
 }
 
-// Export singleton instance
 export const gasManagerService = new GasManagerService();

@@ -33,8 +33,7 @@ export class BlockradarService {
       timeout: 30000,
     });
 
-    // Request interceptor for logging
-    this.client.interceptors.request.use(
+        this.client.interceptors.request.use(
       (config) => {
         logger.debug('Blockradar API Request', {
           method: config.method,
@@ -49,8 +48,7 @@ export class BlockradarService {
       }
     );
 
-    // Response interceptor for logging and error handling
-    this.client.interceptors.response.use(
+        this.client.interceptors.response.use(
       (response) => {
         logger.debug('Blockradar API Response', {
           status: response.status,
@@ -75,9 +73,6 @@ export class BlockradarService {
     );
   }
 
-  /**
-   * Get wallet balance including native and token balances
-   */
   async getWalletBalance(): Promise<WalletBalance> {
     try {
       const response = await this.client.get<BlockradarResponse<WalletBalance>>(
@@ -90,9 +85,6 @@ export class BlockradarService {
     }
   }
 
-  /**
-   * Read from smart contract (view/pure functions)
-   */
   async readContract<T = unknown>(
     request: ContractReadRequest
   ): Promise<T> {
@@ -108,10 +100,6 @@ export class BlockradarService {
     }
   }
 
-  /**
-   * Write to smart contract (state-changing functions)
-   * Supports both single and batch operations
-   */
   async writeContract(
     request: ContractWriteRequest
   ): Promise<ContractWriteResponse | BatchContractWriteResponse> {
@@ -127,9 +115,6 @@ export class BlockradarService {
     }
   }
 
-  /**
-   * Estimate network fees for contract operation
-   */
   async estimateNetworkFee(
     request: ContractNetworkFeeRequest
   ): Promise<ContractNetworkFeeResponse> {
@@ -145,9 +130,6 @@ export class BlockradarService {
     }
   }
 
-  /**
-   * Transfer tokens from wallet
-   */
   async transfer(request: TransferRequest): Promise<TransferResponse> {
     try {
       const response = await this.client.post<BlockradarResponse<TransferResponse>>(
@@ -161,9 +143,6 @@ export class BlockradarService {
     }
   }
 
-  /**
-   * Get transaction status
-   */
   async getTransactionStatus(txId: string): Promise<TransactionStatus> {
     try {
       const response = await this.client.get<BlockradarResponse<TransactionStatus>>(
@@ -176,10 +155,6 @@ export class BlockradarService {
     }
   }
 
-  /**
-   * Hold funds in custody for an invoice
-   * This records that funds are being held for a specific invoice
-   */
   async holdFunds(request: HoldFundsRequest): Promise<void> {
     try {
       logger.info('Holding funds in custody', {
@@ -188,25 +163,12 @@ export class BlockradarService {
         token: request.token,
       });
 
-      // In production, this would interact with Blockradar's custody API
-      // or maintain internal accounting of held funds
-      // For now, we log the hold operation
-      
-      // The funds are already in the payer's Blockradar wallet
-      // We're just marking them as "held" for this invoice
-      // Backend maintains this state, not the smart contract
-    } catch (error) {
+                      } catch (error) {
       logger.error('Failed to hold funds', { error, request });
       throw error;
     }
   }
 
-  /**
-   * Release funds from custody
-   * Transfers funds from payer to receiver and collects platform fee
-   * 
-   * Note: Gas fees are automatically deducted from wallet's native balance by Blockradar
-   */
   async releaseFunds(request: ReleaseFundsRequest): Promise<{
     receiverTransfer: TransferResponse;
     platformFeeTransfer: TransferResponse;
@@ -219,13 +181,11 @@ export class BlockradarService {
         platformFee: request.platformFee,
       });
 
-      // Calculate net amount after platform fee
-      const netAmount = (
+            const netAmount = (
         BigInt(request.amount) - BigInt(request.platformFee)
       ).toString();
 
-      // Validate sufficient token balance before transfer
-      const isNativeToken = request.token === '0x0000000000000000000000000000000000000000';
+            const isNativeToken = request.token === '0x0000000000000000000000000000000000000000';
       const tokenForBalance = isNativeToken ? undefined : request.token;
       
       const hasSufficientBalance = await this.hasSufficientBalance(
@@ -243,9 +203,7 @@ export class BlockradarService {
         throw new Error(errorMsg);
       }
 
-      // Transfer to receiver
-      // Note: Blockradar handles gas fees automatically from wallet's native balance
-      const receiverTransfer = await this.transfer({
+                  const receiverTransfer = await this.transfer({
         to: request.toAddress,
         amount: netAmount,
         token: isNativeToken ? undefined : request.token,
@@ -262,8 +220,7 @@ export class BlockradarService {
         status: receiverTransfer.status,
       });
 
-      // Transfer platform fee
-      const platformFeeTransfer = await this.transfer({
+            const platformFeeTransfer = await this.transfer({
         to: env.PLATFORM_WALLET_ADDRESS,
         amount: request.platformFee,
         token: isNativeToken ? undefined : request.token,
@@ -287,9 +244,6 @@ export class BlockradarService {
     }
   }
 
-  /**
-   * Refund funds back to payer
-   */
   async refundFunds(
     invoiceId: string,
     payerAddress: string,
@@ -328,9 +282,6 @@ export class BlockradarService {
     }
   }
 
-  /**
-   * Batch read multiple contract functions
-   */
   async batchReadContract<T = unknown>(
     requests: ContractReadRequest[]
   ): Promise<T[]> {
@@ -345,9 +296,6 @@ export class BlockradarService {
     }
   }
 
-  /**
-   * Check if wallet has sufficient balance for operation
-   */
   async hasSufficientBalance(
     amount: string,
     token?: string
@@ -356,12 +304,10 @@ export class BlockradarService {
       const balance = await this.getWalletBalance();
       
       if (!token || token === '0x0000000000000000000000000000000000000000') {
-        // Check native balance
-        return BigInt(balance.nativeBalance) >= BigInt(amount);
+                return BigInt(balance.nativeBalance) >= BigInt(amount);
       }
 
-      // Check token balance
-      const tokenBalance = balance.tokens.find(t => 
+            const tokenBalance = balance.tokens.find(t => 
         t.token.toLowerCase() === token.toLowerCase()
       );
 
@@ -376,10 +322,6 @@ export class BlockradarService {
     }
   }
 
-  /**
-   * Poll transaction status until it's confirmed or failed
-   * Useful for operations that need to wait for confirmation
-   */
   async pollTransactionStatus(
     txId: string,
     options?: {
@@ -388,9 +330,7 @@ export class BlockradarService {
       onUpdate?: (status: TransactionStatus) => void;
     }
   ): Promise<TransactionStatus> {
-    const maxAttempts = options?.maxAttempts || 60; // 60 attempts
-    const intervalMs = options?.intervalMs || 2000; // 2 seconds
-    let attempts = 0;
+    const maxAttempts = options?.maxAttempts || 60;     const intervalMs = options?.intervalMs || 2000;     let attempts = 0;
 
     while (attempts < maxAttempts) {
       try {
@@ -409,8 +349,7 @@ export class BlockradarService {
           return status;
         }
 
-        // Still pending, wait and try again
-        await new Promise((resolve) => setTimeout(resolve, intervalMs));
+                await new Promise((resolve) => setTimeout(resolve, intervalMs));
         attempts++;
       } catch (error) {
         logger.error('Error polling transaction status', { error, txId, attempts });
@@ -423,5 +362,4 @@ export class BlockradarService {
   }
 }
 
-// Export singleton instance
 export const blockradarService = new BlockradarService();

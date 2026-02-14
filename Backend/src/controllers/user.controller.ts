@@ -4,16 +4,12 @@ import { userWalletService } from '../services/user-wallet.service';
 import { logger } from '../utils/logger';
 
 export class UserController {
-  /**
-   * POST /api/users/register
-   * Register a new user and create their wallet
-   */
+  
   async register(req: Request, res: Response): Promise<void> {
     try {
       const { email, name, password } = req.body;
 
-      // Validate request
-      if (!email || !password) {
+            if (!email || !password) {
         res.status(400).json({
           error: 'Missing required fields',
           message: 'Email and password are required',
@@ -21,8 +17,7 @@ export class UserController {
         return;
       }
 
-      // Check if user already exists
-      const exists = await userService.userExists(email);
+            const exists = await userService.userExists(email);
       if (exists) {
         res.status(409).json({
           error: 'User already exists',
@@ -31,8 +26,7 @@ export class UserController {
         return;
       }
 
-      // Register user
-      const result = await userService.registerUser({
+            const result = await userService.registerUser({
         email,
         name,
         password,
@@ -57,10 +51,6 @@ export class UserController {
     }
   }
 
-  /**
-   * GET /api/users/:userId/profile
-   * Get user profile with wallet and stats
-   */
   async getProfile(req: Request, res: Response): Promise<void> {
     try {
       const { userId } = req.params;
@@ -80,10 +70,6 @@ export class UserController {
     }
   }
 
-  /**
-   * GET /api/users/:userId/wallet
-   * Get user's wallet details
-   */
   async getWallet(req: Request, res: Response): Promise<void> {
     try {
       const { userId } = req.params;
@@ -118,10 +104,6 @@ export class UserController {
     }
   }
 
-  /**
-   * POST /api/users/:userId/kyc
-   * Update user KYC status (admin only)
-   */
   async updateKYC(req: Request, res: Response): Promise<void> {
     try {
       const { userId } = req.params;
@@ -150,10 +132,6 @@ export class UserController {
     }
   }
 
-  /**
-   * POST /api/users/:userId/wallet/fund
-   * Fund user wallet from master (admin only)
-   */
   async fundWallet(req: Request, res: Response): Promise<void> {
     try {
       const { userId } = req.params;
@@ -188,5 +166,4 @@ export class UserController {
   }
 }
 
-// Export singleton instance
 export const userController = new UserController();

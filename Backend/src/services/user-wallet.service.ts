@@ -42,10 +42,6 @@ export class UserWalletService {
     });
   }
 
-  /**
-   * Create a child address for a new user
-   * Each user gets their own blockchain address derived from master wallet
-   */
   async createUserWallet(request: CreateUserWalletRequest): Promise<UserWalletInfo> {
     try {
       logger.info('Creating child address for user', {
@@ -73,8 +69,7 @@ export class UserWalletService {
         address: childAddress.address,
       });
 
-      // Store in database
-      const userWallet: UserWalletInfo = {
+            const userWallet: UserWalletInfo = {
         userId: request.userId,
         addressId: childAddress.id,
         address: childAddress.address,
@@ -83,8 +78,6 @@ export class UserWalletService {
         createdAt: new Date(childAddress.createdAt),
       };
 
-      // await db.userWallet.create(userWallet);
-
       return userWallet;
     } catch (error) {
       logger.error('Failed to create user wallet', { error, request });
@@ -92,23 +85,15 @@ export class UserWalletService {
     }
   }
 
-  /**
-   * Get user's child address details
-   */
   async getUserWallet(userId: string): Promise<BlockradarChildAddress | null> {
     try {
-      // In production, query from database first
-      // const wallet = await db.userWallet.findByUserId(userId);
-      // if (!wallet) return null;
-
-      // For now, list all addresses and find by metadata
-      const response = await this.client.get<BlockradarResponse<BlockradarChildAddress[]>>(
+                  
+            const response = await this.client.get<BlockradarResponse<BlockradarChildAddress[]>>(
         `/v1/wallets/${this.walletId}/addresses`
       );
 
       const addresses = response.data.data;
-      // Find user's address (in production, use database query)
-      const userAddress = addresses.find((addr: any) => 
+            const userAddress = addresses.find((addr: any) => 
         addr.metadata?.userId === userId
       );
 
@@ -119,9 +104,6 @@ export class UserWalletService {
     }
   }
 
-  /**
-   * Get child address balance
-   */
   async getChildAddressBalance(addressId: string): Promise<{
     nativeBalance: string;
     tokens: Array<{ token: string; balance: string; symbol: string }>;
@@ -138,9 +120,6 @@ export class UserWalletService {
     }
   }
 
-  /**
-   * Transfer from child address
-   */
   async transferFromUserWallet(
     addressId: string,
     request: TransferRequest
@@ -169,9 +148,6 @@ export class UserWalletService {
     }
   }
 
-  /**
-   * Read contract from child address context
-   */
   async readContractFromChildAddress<T = unknown>(
     addressId: string,
     request: ContractReadRequest
@@ -188,9 +164,6 @@ export class UserWalletService {
     }
   }
 
-  /**
-   * Write contract from child address (user signs transaction)
-   */
   async writeContractFromChildAddress(
     addressId: string,
     request: ContractWriteRequest
@@ -220,9 +193,6 @@ export class UserWalletService {
     }
   }
 
-  /**
-   * Estimate network fee for child address operation
-   */
   async estimateNetworkFeeForChildAddress(
     addressId: string,
     request: ContractReadRequest
@@ -239,9 +209,6 @@ export class UserWalletService {
     }
   }
 
-  /**
-   * List all child addresses for master wallet
-   */
   async listAllChildAddresses(): Promise<BlockradarChildAddress[]> {
     try {
       const response = await this.client.get<BlockradarResponse<BlockradarChildAddress[]>>(
@@ -259,9 +226,6 @@ export class UserWalletService {
     }
   }
 
-  /**
-   * Get specific child address by ID
-   */
   async getChildAddress(addressId: string): Promise<BlockradarChildAddress> {
     try {
       const response = await this.client.get<BlockradarResponse<BlockradarChildAddress>>(
@@ -275,10 +239,6 @@ export class UserWalletService {
     }
   }
 
-  /**
-   * Fund user wallet from master wallet (onboarding)
-   * Useful for gas fee allowances or initial balance
-   */
   async fundUserWallet(
     addressId: string,
     amount: string,
@@ -291,11 +251,9 @@ export class UserWalletService {
         token,
       });
 
-      // Get child address details
-      const childAddress = await this.getChildAddress(addressId);
+            const childAddress = await this.getChildAddress(addressId);
 
-      // Transfer from master wallet to child address
-      const response = await this.client.post<BlockradarResponse<TransferResponse>>(
+            const response = await this.client.post<BlockradarResponse<TransferResponse>>(
         `/v1/wallets/${this.walletId}/transfer`,
         {
           to: childAddress.address,
@@ -321,9 +279,6 @@ export class UserWalletService {
     }
   }
 
-  /**
-   * Check if user already has a wallet
-   */
   async userHasWallet(userId: string): Promise<boolean> {
     try {
       const wallet = await this.getUserWallet(userId);
@@ -334,13 +289,9 @@ export class UserWalletService {
     }
   }
 
-  /**
-   * Get or create user wallet (idempotent)
-   */
   async getOrCreateUserWallet(request: CreateUserWalletRequest): Promise<UserWalletInfo> {
     try {
-      // Check if user already has wallet
-      const existing = await this.getUserWallet(request.userId);
+            const existing = await this.getUserWallet(request.userId);
       
       if (existing) {
         logger.info('User already has wallet', {
@@ -358,8 +309,7 @@ export class UserWalletService {
         };
       }
 
-      // Create new wallet
-      return await this.createUserWallet(request);
+            return await this.createUserWallet(request);
     } catch (error) {
       logger.error('Failed to get or create user wallet', { error, request });
       throw error;
@@ -367,5 +317,4 @@ export class UserWalletService {
   }
 }
 
-// Export singleton instance
 export const userWalletService = new UserWalletService();

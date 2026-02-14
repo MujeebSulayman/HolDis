@@ -1,6 +1,5 @@
 import { Address } from 'viem';
 
-// Blockradar API Response Types
 export interface BlockradarResponse<T> {
   message: string;
   statusCode: number;
@@ -14,7 +13,6 @@ export interface BlockradarError {
   data?: Record<string, unknown>;
 }
 
-// Wallet Types
 export interface BlockradarWallet {
   id: string;
   name: string;
@@ -36,7 +34,6 @@ export interface BlockradarChildAddress {
   createdAt: string;
 }
 
-// Transfer Types
 export interface TransferRequest {
   to: string;
   amount: string;
@@ -56,7 +53,6 @@ export interface TransferResponse {
   reference?: string;
 }
 
-// Smart Contract Types
 export interface ContractReadRequest {
   address: string;
   method: string;
@@ -74,8 +70,7 @@ export interface ContractReadRequest {
 export interface ContractWriteRequest extends ContractReadRequest {
   reference?: string;
   metadata?: Record<string, unknown>;
-  // Batch operations
-  calls?: ContractCall[];
+    calls?: ContractCall[];
 }
 
 export interface ContractCall {
@@ -124,7 +119,6 @@ export interface ContractNetworkFeeResponse {
   estimatedArrivalTime: number;
 }
 
-// Webhook Types
 export interface BlockradarWebhookPayload {
   event: string;
   data: BlockradarWebhookData;
@@ -150,7 +144,6 @@ export interface BlockradarWebhookData {
   error?: string;
 }
 
-// Webhook Event Types
 export enum BlockradarWebhookEvent {
   SMART_CONTRACT_SUCCESS = 'custom-smart-contract.success',
   SMART_CONTRACT_FAILED = 'custom-smart-contract.failed',
@@ -160,7 +153,6 @@ export enum BlockradarWebhookEvent {
   WITHDRAWAL_CONFIRMED = 'withdrawal.confirmed',
 }
 
-// Balance Types
 export interface TokenBalance {
   token: string;
   symbol: string;
@@ -175,7 +167,6 @@ export interface WalletBalance {
   tokens: TokenBalance[];
 }
 
-// Transaction Status
 export interface TransactionStatus {
   id: string;
   hash: string;
@@ -186,7 +177,6 @@ export interface TransactionStatus {
   error?: string;
 }
 
-// Fund Custody Operations
 export interface HoldFundsRequest {
   walletAddress: string;
   amount: string;
