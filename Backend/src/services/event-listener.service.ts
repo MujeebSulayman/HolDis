@@ -226,8 +226,6 @@ export class EventListenerService {
         proofHash,
       });
 
-            const invoice = await contractService.getInvoice(invoiceId);
-
     } catch (error) {
       logger.error('Failed to handle DeliverySubmitted event', { error, log });
     }

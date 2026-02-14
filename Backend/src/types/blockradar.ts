@@ -1,4 +1,3 @@
-import { Address } from 'viem';
 
 export interface BlockradarResponse<T> {
   message: string;

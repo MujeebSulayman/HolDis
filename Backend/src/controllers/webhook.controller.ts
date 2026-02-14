@@ -47,7 +47,7 @@ export class WebhookController {
     }
   }
 
-  async testWebhook(req: Request, res: Response): Promise<void> {
+  async testWebhook(_req: Request, res: Response): Promise<void> {
     try {
       const testEvent = {
         event: 'custom-smart-contract.success' as const,

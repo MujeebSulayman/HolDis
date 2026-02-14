@@ -76,7 +76,7 @@ export class WebhookService {
   }
 
   private async handleContractSuccess(event: BlockradarWebhookEvent): Promise<void> {
-    const { reference, metadata, hash, method } = event.data;
+    const { reference, metadata, method } = event.data;
 
         if (metadata?.type) {
       switch (metadata.type) {

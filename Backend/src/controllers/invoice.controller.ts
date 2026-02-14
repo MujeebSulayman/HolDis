@@ -207,21 +207,21 @@ export class InvoiceController {
               },
             },
           ],
-        });
+        } as any);
 
         logger.info('Batch funding initiated', {
           invoiceId,
           userId,
-          success: batchResult.success?.length || 0,
-          errors: batchResult.errors?.length || 0,
+          success: (batchResult as any).success?.length || 0,
+          errors: (batchResult as any).errors?.length || 0,
         });
 
         res.status(200).json({
           success: true,
           message: 'Invoice funding batch initiated',
           data: {
-            operations: batchResult.success,
-            errors: batchResult.errors,
+            operations: (batchResult as any).success,
+            errors: (batchResult as any).errors,
           },
         });
       } else {
@@ -401,19 +401,19 @@ export class InvoiceController {
       let invoices;
       switch (role) {
         case 'issuer':
-          invoices = await contractService.getIssuerInvoices(wallet.address);
+          invoices = await contractService.getIssuerInvoices(wallet.address as `0x${string}`);
           break;
         case 'payer':
-          invoices = await contractService.getPayerInvoices(wallet.address);
+          invoices = await contractService.getPayerInvoices(wallet.address as `0x${string}`);
           break;
         case 'receiver':
-          invoices = await contractService.getReceiverInvoices(wallet.address);
+          invoices = await contractService.getReceiverInvoices(wallet.address as `0x${string}`);
           break;
         default:
                     const [issued, paying, receiving] = await Promise.all([
-            contractService.getIssuerInvoices(wallet.address),
-            contractService.getPayerInvoices(wallet.address),
-            contractService.getReceiverInvoices(wallet.address),
+            contractService.getIssuerInvoices(wallet.address as `0x${string}`),
+            contractService.getPayerInvoices(wallet.address as `0x${string}`),
+            contractService.getReceiverInvoices(wallet.address as `0x${string}`),
           ]);
           invoices = { issued, paying, receiving };
       }

@@ -1,7 +1,6 @@
 import { logger } from '../utils/logger';
 import { userWalletService } from './user-wallet.service';
 import {
-  User,
   CreateUserRequest,
   UserRegistrationResponse,
   UserProfile,
@@ -121,7 +120,7 @@ export class UserService {
     }
   }
 
-  private async fundInitialGasAllowance(addressId: string): Promise<void> {
+  private async _fundInitialGasAllowance(addressId: string): Promise<void> {
     try {
             const gasAllowance = '0.01'; 
       await userWalletService.fundUserWallet(addressId, gasAllowance);
@@ -139,10 +138,10 @@ export class UserService {
     return `user_${Date.now()}_${Math.random().toString(36).substring(7)}`;
   }
 
-  private async hashPassword(password: string): Promise<string> {
-                return password;   }
+  private async _hashPassword(_password: string): Promise<string> {
+    return _password;   }
 
-  private async getInvoiceStats(userId: string): Promise<any> {
+  private async _getInvoiceStats(_userId: string): Promise<any> {
             return {
       totalIssued: 0,
       totalPaid: 0,

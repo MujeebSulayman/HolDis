@@ -44,7 +44,7 @@ export function createApp(): Application {
     customSiteTitle: 'Holdis API Docs',
   }));
 
-  app.get('/health', (req: Request, res: Response) => {
+  app.get('/health', (_req: Request, res: Response) => {
     res.status(200).json({
       status: 'ok',
       timestamp: new Date().toISOString(),
@@ -64,7 +64,7 @@ export function createApp(): Application {
     });
   });
 
-  app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
+  app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
     logger.error('Unhandled error', {
       error: err.message,
       stack: err.stack,

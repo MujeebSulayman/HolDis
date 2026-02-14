@@ -1,4 +1,4 @@
-import { createPublicClient, createWalletClient, http, parseAbi, formatUnits, Address } from 'viem';
+import { createPublicClient, http, parseAbi, formatUnits, Address } from 'viem';
 import { mainnet, sepolia } from 'viem/chains';
 import { env } from '../config/env';
 import { logger } from '../utils/logger';
@@ -6,12 +6,6 @@ import {
   Invoice,
   InvoiceStatus,
   PlatformSettings,
-  InvoiceCreatedEvent,
-  InvoiceFundedEvent,
-  DeliverySubmittedEvent,
-  DeliveryConfirmedEvent,
-  InvoiceCompletedEvent,
-  InvoiceCancelledEvent,
 } from '../types/contract';
 
 const holdisAbi = parseAbi([
@@ -229,9 +223,14 @@ export class ContractService {
     toBlock?: bigint
   ) {
     try {
+      const eventAbi = holdisAbi.find(item => item.type === 'event' && item.name === eventName);
+      if (!eventAbi || eventAbi.type !== 'event') {
+        throw new Error(`Event ${eventName} not found in ABI`);
+      }
+      
       const logs = await this.publicClient.getLogs({
         address: this.contractAddress,
-        event: holdisAbi.find(item => item.type === 'event' && item.name === eventName),
+        event: eventAbi as any,
         fromBlock: fromBlock || 'earliest',
         toBlock: toBlock || 'latest',
       });
