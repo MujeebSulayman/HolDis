@@ -127,7 +127,7 @@ export class ContractService {
         abi: holdisAbi,
         functionName: 'getPayerInvoices',
         args: [payer, offset, limit],
-      });
+      }) as [bigint[], bigint];
       return { invoiceIds, total };
     } catch (error) {
       logger.error('Failed to get payer invoices', { error, payer });
@@ -146,7 +146,7 @@ export class ContractService {
         abi: holdisAbi,
         functionName: 'getReceiverInvoices',
         args: [receiver, offset, limit],
-      });
+      }) as [bigint[], bigint];
       return { invoiceIds, total };
     } catch (error) {
       logger.error('Failed to get receiver invoices', { error, receiver });
@@ -160,7 +160,7 @@ export class ContractService {
         address: this.contractAddress,
         abi: holdisAbi,
         functionName: 'platformSettings',
-      });
+      }) as any;
 
       return {
         platformFee: settings.platformFee,
@@ -180,7 +180,7 @@ export class ContractService {
         abi: holdisAbi,
         functionName: 'supportedTokens',
         args: [token],
-      });
+      }) as boolean;
       return supported;
     } catch (error) {
       logger.error('Failed to check token support', { error, token });
@@ -243,4 +243,4 @@ export class ContractService {
   }
 }
 
-export const contractService = ne
+export const contractService = new ContractService();
